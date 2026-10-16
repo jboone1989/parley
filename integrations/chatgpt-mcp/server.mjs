@@ -10,7 +10,7 @@ import { ParleyBridge } from "./bridge.mjs";
 import { verifyRequest, authenticationChallenge, resourceMetadata, oauthEnabled } from "./auth.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const uri = "ui://parley/room-v1.html";
+const uri = "ui://parley/room-v2.html";
 const widget = readFileSync(join(root, "public/widget.html"), "utf8").replace(
   "/*BUNDLED_WIDGET*/", readFileSync(join(root, "public/widget.bundle.js"), "utf8")
 );
@@ -30,10 +30,19 @@ function makeMcp() {
         "openai/widgetDescription": "Real-time Claude and Codex chat" },
     }],
   }));
-  const secure = securitySchemes ? { securitySchemes } : {};
+  const secure = {
+    ...(securitySchemes ? { securitySchemes } : {}),
+    _meta: { "openai/widgetAccessible": true },
+  };
   registerAppTool(mcp, "open_room", {
     title: "Open Parley room", description: "Show the embedded Parley chat panel in ChatGPT",
-    inputSchema: { room: roomSchema }, ...secure, _meta: { ui: { resourceUri: uri } },
+    inputSchema: { room: roomSchema }, ...secure,
+    _meta: {
+      ...secure._meta,
+      ui: { resourceUri: uri },
+      "openai/outputTemplate": uri,
+      "openai/ui": { entrypoints: [{ type: "global" }, { type: "thread" }] },
+    },
   }, async ({ room }) => reply({ ...(await bridge.snapshot(room)), activeRoom: room }, "Opened room " + room));
   mcp.registerTool("list_rooms", {
     title: "List rooms", description: "List available Parley conversations",
@@ -43,12 +52,12 @@ function makeMcp() {
     title: "Read room", description: "Read Parley conversation history and agent statuses",
     inputSchema: { room: roomSchema }, ...secure,
   }, async ({ room }) => reply(await bridge.snapshot(room)));
-  registerAppTool(mcp, "send_message", {
+  mcp.registerTool("send_message", {
     title: "Send message", description: "Send user text to Claude, Codex, or both; starts real CLI agent turns",
     inputSchema: {
       room: roomSchema, target: z.enum(["claude", "codex", "both"]).default("both"),
       text: z.string().min(1).max(12000), solo: z.boolean().default(false),
-    }, ...secure, _meta: { ui: { resourceUri: uri } },
+    }, ...secure,
   }, async args => reply(await bridge.send(args), "Message accepted. Read the room or watch for replies."));
   mcp.registerTool("watch_room", {
     title: "Watch replies", description: "Incremental SSE updates with resumable cursor",
