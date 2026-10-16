@@ -48,6 +48,7 @@ test("rejects invalid outgoing messages before performing network calls", async 
   await assert.rejects(bridge.send({ room: "../etc", text: "hello" }), /Invalid/);
   await assert.rejects(bridge.send({ target: "everyone", text: "hello" }), /Target/);
   await assert.rejects(bridge.send({ text: " " }), /Message/);
+  await assert.rejects(bridge.send({ target: "both", solo: true, text: "hello" }), /Solo/);
 });
 
 test("bounded room event log supports gap detection", async () => {
