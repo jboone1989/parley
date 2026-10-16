@@ -103,17 +103,28 @@ export class ParleyBridge {
     for (const resolve of channel.waiters) resolve();
     channel.waiters.clear();
   }
+  retireRoom(room) {
+    const channel = this.channels.get(room);
+    if (!channel) return;
+    this.channels.delete(room);
+    channel.connected = false;
+    channel.controller?.abort();
+    for (const resolve of channel.waiters) resolve();
+    channel.waiters.clear();
+  }
   async runEventStream(channel) {
     if (channel.running) return;
     channel.running = true;
-    while (this.channels.has(channel.room)) {
+    while (this.channels.get(channel.room) === channel) {
       try {
         const { token, protocol } = this.auth || await this.refreshAuth();
+        if (this.channels.get(channel.room) !== channel) break;
         const url = new URL('/api/events', this.base);
         url.searchParams.set('room', channel.room);
         url.searchParams.set('token', token);
         url.searchParams.set('protocol', protocol);
-        const response = await fetch(url, { headers: { accept: 'text/event-stream' } });
+        channel.controller = new AbortController();
+        const response = await fetch(url, { headers: { accept: 'text/event-stream' }, signal: channel.controller.signal });
         if (!response.ok) {
           if (response.status === 403) this.auth = null;
           throw fail('event subscription returned ' + response.status);
@@ -141,8 +152,10 @@ export class ParleyBridge {
         }
       } catch { /* reconnect after network failure or Parley restart */ }
       channel.connected = false;
+      if (this.channels.get(channel.room) !== channel) break;
       await new Promise(resolve => setTimeout(resolve, 1200));
     }
+    channel.running = false;
   }
   async watch({ room = 'default', after = 0, waitMs = 3000 } = {}) {
     const channel = this.channel(room);

@@ -41,5 +41,8 @@ export async function nativeRequest(bridge, { path, method = "GET", body }, retr
   const result = { status: response.status, headers };
   if ((headers["content-type"] || "").includes("application/json")) result.json = await response.json();
   else result.base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
+  if (response.ok && method === "POST" && ["/api/room/rename", "/api/room/delete"].includes(url.pathname)) {
+    bridge.retireRoom?.(body?.room);
+  }
   return result;
 }

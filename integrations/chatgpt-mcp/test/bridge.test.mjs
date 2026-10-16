@@ -122,3 +122,14 @@ test("a snapshot does not restore text from a previous agent run", async () => {
   bridge.call = async () => ({ entries: [], room: { busy: ["claude"], busyInfo: [{ agent: "claude", runId: "new" }] } });
   assert.deepEqual((await bridge.snapshot("default")).streams, {});
 });
+
+test("renamed or deleted rooms release their stream and pending watchers", async () => {
+  const bridge = offlineBridge(), channel = bridge.channel("old-room");
+  channel.controller = new AbortController();
+  const pending = bridge.watch({ room: "old-room", waitMs: 8000 });
+  bridge.retireRoom("old-room");
+  assert.equal(channel.controller.signal.aborted, true);
+  assert.equal(bridge.channels.has("old-room"), false);
+  assert.equal((await pending).connected, false);
+  assert.equal(channel.waiters.size, 0);
+});
