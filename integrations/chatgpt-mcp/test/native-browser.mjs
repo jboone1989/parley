@@ -88,7 +88,7 @@ const browser = await chromium.launch({ headless: true,
   args: ["--no-sandbox"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
-  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  const errors = []; page.on("pageerror", error => { errors.push(error.message); console.error("native browser page error:", error.message); });
   await page.exposeFunction("__testCall", invoke);
   await page.goto("http://127.0.0.1:"+server.address().port);
   await page.locator("#seat1 option").first().waitFor({ state: "attached" });
@@ -117,10 +117,12 @@ try {
   await page.locator("#overlay").waitFor({ state: "hidden" });
   assert.equal(rooms.get("session-b").room.cfg.roomNote, "Room note 原样");
   console.log("native browser: settings passed");
+  await page.locator(".room-item").filter({hasText:"session-b"}).hover();
   await page.getByRole("button",{name:"Rename session-b",exact:true}).click();
   await page.locator("dialog input").fill("session-renamed"); await page.locator("dialog button[type=submit]").click();
   await page.locator("dialog button[type=submit]").click();
   await page.waitForFunction(() => document.getElementById("roomTitle").textContent === "session-renamed");
+  await page.locator(".room-item").filter({hasText:"session-renamed"}).hover();
   await page.getByRole("button",{name:"Delete session-renamed",exact:true}).click();
   await page.locator("dialog button[type=submit]").click();
   await page.waitForFunction(() => document.getElementById("roomTitle").textContent !== "session-renamed");
