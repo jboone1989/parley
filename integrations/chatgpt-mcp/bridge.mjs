@@ -1,3 +1,4 @@
+import { createRoomState, applyRoomEvent } from './room-state.mjs';
 const BASE = 'http://127.0.0.1:4141';
 export const ROOM_NAME = /^[a-zA-Z0-9_-]{1,40}$/;
 export function validRoom(value) {
@@ -51,7 +52,19 @@ export class ParleyBridge {
     return this.call('/api/rooms');
   }
   async snapshot(room) {
-    return this.call('/api/room?name=' + encodeURIComponent(validRoom(room)));
+    const name = validRoom(room);
+    const channel = this.channel(name);
+    // Capture a replay boundary before the HTTP read, so events arriving during
+    // that read are still delivered. The native snapshot remains authoritative.
+    const cursor = channel.seq;
+    const streams = { ...channel.live.streams }, runs = { ...channel.live.runs };
+    const snapshot = await this.call('/api/room?name=' + encodeURIComponent(name));
+    const busy = snapshot.room?.busy || [];
+    const active = Array.isArray(busy) ? busy : Object.keys(busy).filter(key => busy[key]);
+    const currentRuns = Object.fromEntries((snapshot.room?.busyInfo || []).map(info => [info.agent, info.runId]));
+    return { ...snapshot, cursor, streams: Object.fromEntries(Object.entries(streams).filter(([agent]) =>
+      active.includes(agent) && (!currentRuns[agent] || runs[agent] === currentRuns[agent])
+    )) };
   }
   async send({ room = 'default', target = 'both', text, solo = false }) {
     if (typeof text !== 'string' || !text.trim() || text.length > 12000) {
@@ -74,14 +87,17 @@ export class ParleyBridge {
   channel(name) {
     const room = validRoom(name);
     if (!this.channels.has(room)) {
-      const channel = { room, seq: 0, events: [], waiters: new Set(), connected: false, running: false };
+      const channel = { room, seq: 0, events: [], waiters: new Set(), connected: false, running: false, live: createRoomState(room) };
       this.channels.set(room, channel);
       this.runEventStream(channel).catch(() => {});
     }
     return this.channels.get(room);
   }
   publish(channel, data) {
-    const record = { seq: ++channel.seq, ...data };
+    const record = { ...data, seq: ++channel.seq };
+    channel.live ||= createRoomState(channel.room);
+    applyRoomEvent(channel.live, data);
+    channel.live.entries = []; // Only unfinished output needs a memory cache.
     channel.events.push(record);
     if (channel.events.length > 300) channel.events.splice(0, channel.events.length - 300);
     for (const resolve of channel.waiters) resolve();
@@ -132,7 +148,7 @@ export class ParleyBridge {
     const channel = this.channel(room);
     const cursor = Math.max(0, Number(after) || 0);
     const duration = Math.min(8000, Math.max(0, Number(waitMs) || 0));
-    if (channel.seq <= cursor && duration) {
+    if (channel.seq === cursor && duration) {
       await new Promise(resolve => {
         let done = false;
         const finish = () => {
@@ -146,10 +162,11 @@ export class ParleyBridge {
         const timeout = setTimeout(finish, duration);
       });
     }
+    const resync = cursor > channel.seq || (channel.events.length > 0 && cursor < channel.events[0].seq - 1);
+    const events = channel.events.filter(event => event.seq > cursor).slice(0, 100);
     return {
-      room: channel.room, cursor: channel.seq, connected: channel.connected,
-      resync: channel.events.length > 0 && cursor < channel.events[0].seq - 1,
-      events: channel.events.filter(event => event.seq > cursor).slice(-100),
+      room: channel.room, cursor: resync ? channel.seq : (events.at(-1)?.seq ?? channel.seq),
+      connected: channel.connected, resync, events,
     };
   }
 }

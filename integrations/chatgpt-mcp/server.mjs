@@ -10,7 +10,7 @@ import { ParleyBridge } from "./bridge.mjs";
 import { verifyRequest, authenticationChallenge, resourceMetadata, oauthEnabled } from "./auth.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const uri = "ui://parley/room-v3.html";
+const uri = "ui://parley/room-v4.html";
 const widget = readFileSync(join(root, "public/widget.html"), "utf8").replace(
   "/*BUNDLED_WIDGET*/", () => readFileSync(join(root, "public/widget.bundle.js"), "utf8")
 );

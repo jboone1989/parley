@@ -7,6 +7,23 @@ Private MCP Apps extension for Parley 1.2.1. Uses existing Claude Code and Codex
 - Send messages, list rooms, read history, stop replies
 - SSE-backed incremental updates with bounded cursor and resynchronization
 - Authenticated private MCP Streamable HTTP endpoint
+- Preserve the selected room and per-room drafts within the browser tab when
+  sandbox session storage is available; Chinese IME confirmation never sends.
+- Paginate event backlogs without dropping deltas; adapter restarts and expired
+  cursors trigger a snapshot, including any unfinished output cached by the bridge.
+
+## Using the panel
+Open the Parley panel once and keep using its composer. Sending, reading, and
+watching messages return data without mounting another panel. Text streams are
+displayed verbatim, including line breaks and punctuation. Enter sends;
+Shift+Enter inserts a newline. Confirming a Chinese input candidate does not send.
+Switching rooms keeps separate drafts. A send acknowledgement never clears text
+typed after that send or a different room's draft.
+
+The panel follows native Parley's public output events; it does not expose hidden
+model reasoning or create a new ChatGPT assistant turn when an agent finishes.
+ChatGPT can retrieve replies through get_room/watch_room. A closed or suspended
+panel stops polling and resumes from server history when opened again.
 
 ## Install
 Install this directory under /home/ubuntu/ferro-prod/parley/plugin on the AIHOT overseas host. Keep the original Parley server running at 127.0.0.1:4141. With Node.js >= 20 and both authenticated CLI binaries already available:

@@ -41,7 +41,13 @@ export function applyRoomSnapshot(state, snapshot, { preserveLive = false } = {}
       for (const entry of [...snapshot.entries, ...current]) upsertEntry(state, entry);
     } else state.entries = snapshot.entries.slice();
   }
-  if (!preserveLive && snapshot.room) applyActivity(state, snapshot.room);
+  if (!preserveLive && snapshot.room) {
+    applyActivity(state, snapshot.room);
+    if (snapshot.streams) state.streams = Object.fromEntries(
+      Object.entries(snapshot.streams).filter(([agent, text]) => state.busy[agent] && typeof text === "string")
+    );
+    if (Number.isInteger(snapshot.cursor)) state.cursor = snapshot.cursor;
+  }
 }
 
 export function visibleStreams(state) {

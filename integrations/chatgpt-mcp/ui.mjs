@@ -1,13 +1,43 @@
 import { App } from "@modelcontextprotocol/ext-apps";
 import { createRoomState, applyRoomSnapshot, applyRoomEvent, visibleStreams } from "./room-state.mjs";
+import { restorePanel, savePanel, shouldSend } from "./panel-session.mjs";
 
-const app = new App({ name: "Parley Chat", version: "0.1.1" });
+const app = new App({ name: "Parley Chat", version: "0.1.2" });
 const $ = id => document.getElementById(id);
-const state = createRoomState();
+let storage;
+try { storage = window.sessionStorage; } catch { /* Sandboxed host. */ }
+const panel = restorePanel(storage);
+const state = createRoomState(panel.room);
 const rows = new Map();
 let generation = 0;
 let revision = 0;
+let userSelectedRoom = false;
 const error = message => { $("error").textContent = message || ""; };
+
+function rememberDraft() {
+  panel.room = state.room;
+  panel.drafts[state.room] = $("draft").value;
+  savePanel(storage, panel);
+}
+
+function ensureRoomOption(name) {
+  const select = $("room");
+  if (![...select.options].some(option => option.value === name)) {
+    const option = document.createElement("option");
+    option.value = name; option.textContent = name; select.append(option);
+  }
+  select.value = name;
+}
+
+function selectRoom(room) {
+  if (room !== state.room) {
+    rememberDraft(); generation++; revision++;
+    Object.assign(state, createRoomState(room), { connected: state.connected });
+    $("draft").value = panel.drafts[room] || "";
+    $("messages").scrollTop = 0;
+  }
+  ensureRoomOption(room); rememberDraft(); render();
+}
 
 async function call(name, params = {}) {
   const result = await app.callServerTool({ name, arguments: params });
@@ -75,8 +105,7 @@ async function loadRooms() {
     const option = document.createElement("option");
     option.value = name; option.textContent = name; select.append(option);
   }
-  if (!names.includes(state.room)) state.room = names[0] || "default";
-  select.value = state.room;
+  ensureRoomOption(state.room);
 }
 
 async function poll() {
@@ -88,11 +117,15 @@ async function poll() {
       if (epoch !== generation || room !== state.room) continue;
       let resync = !!result.resync;
       if (!resync) for (const event of result.events || []) { revision++; resync = applyRoomEvent(state, event) || resync; }
+      const previousCursor = state.cursor;
       state.cursor = result.cursor ?? state.cursor;
-      if (resync) await loadRoom();
+      if (resync) {
+        try { await loadRoom(); }
+        catch (err) { state.cursor = previousCursor; throw err; }
+      }
       if (epoch !== generation) continue;
       $("state").textContent = result.connected ? "实时连接" : "正在重连";
-      error(""); render();
+      render();
     } catch (err) {
       if (epoch !== generation) continue;
       $("state").textContent = "连接中断"; error(err.message);
@@ -106,18 +139,23 @@ $("target").addEventListener("change", () => {
   if ($("solo").disabled) $("solo").checked = false;
 });
 $("solo").disabled = $("target").value === "both";
+$("draft").value = panel.drafts[state.room] || "";
+$("draft").addEventListener("input", rememberDraft);
 $("send").addEventListener("click", async () => {
-  const message = $("draft").value.trim();
-  if (!message) return;
+  const draft = $("draft").value, message = draft.trim(), room = state.room;
+  if (!message || $("send").disabled) return;
   const button = $("send"); button.disabled = true; error("");
   try {
-    await call("send_message", { room: state.room, target: $("target").value, text: message, solo: $("target").value !== "both" && $("solo").checked });
-    $("draft").value = ""; await loadRoom();
+    await call("send_message", { room, target: $("target").value, text: message, solo: $("target").value !== "both" && $("solo").checked });
+    if (state.room === room && $("draft").value === draft) $("draft").value = "";
+    if (panel.drafts[room] === draft) delete panel.drafts[room];
+    rememberDraft();
+    if (state.room === room) await loadRoom().catch(err => error("消息已发送，记录刷新失败：" + err.message));
   } catch (err) { error(err.message); }
   finally { button.disabled = false; }
 });
 $("draft").addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("send").click(); }
+  if (shouldSend(event)) { event.preventDefault(); $("send").click(); }
 });
 $("stop").addEventListener("click", async () => {
   try { await call("stop_reply", { room: state.room, agent: null }); await loadRoom(); }
@@ -125,17 +163,17 @@ $("stop").addEventListener("click", async () => {
 });
 $("refresh").addEventListener("click", () => loadRoom().catch(err => error(err.message)));
 $("room").addEventListener("change", async event => {
-  generation++; revision++;
-  Object.assign(state, createRoomState(event.target.value), { connected: true });
-  render(); await loadRoom().catch(err => error(err.message));
+  userSelectedRoom = true;
+  selectRoom(event.target.value); error("");
+  await loadRoom().catch(err => error(err.message));
 });
 app.ontoolresult = result => {
   const snapshot = result.structuredContent;
   if (!snapshot?.entries) return;
   const room = snapshot.activeRoom || snapshot.room?.name || state.room;
-  if (room !== state.room) { generation++; Object.assign(state, createRoomState(room), { connected: state.connected }); }
+  if (room !== state.room && userSelectedRoom) return;
+  selectRoom(room);
   applyRoomSnapshot(state, snapshot); render();
-  if ($("room").querySelector(`option[value="${state.room}"]`)) $("room").value = state.room;
 };
 (async () => {
   try { await app.connect(); await loadRooms(); await loadRoom(); state.connected = true; poll(); }

@@ -13,6 +13,18 @@ test("native keyframes and offset deltas preserve all text verbatim", () => {
   assert.equal(visibleStreams(state)[0][1], parts.join(""));
 });
 
+test("a refreshed snapshot restores active text at its replay boundary", () => {
+  const state = createRoomState();
+  applyRoomSnapshot(state, { room: { busy: ["claude"] }, entries: [], cursor: 8,
+    streams: { claude: "中文 $&", codex: "completed" } });
+  assert.equal(state.cursor, 8);
+  assert.equal(state.streams.claude, "中文 $&");
+  assert.equal(state.streams.codex, undefined);
+  applyRoomSnapshot(state, { room: { busy: [] }, entries: [], cursor: 1, streams: {} }, { preserveLive: true });
+  assert.equal(state.cursor, 8);
+  assert.equal(state.streams.claude, "中文 $&");
+});
+
 test("a missing delta waits for a keyframe instead of corrupting text", () => {
   const state = createRoomState();
   applyRoomEvent(state, { type: "stream", agent: "codex", text: "abc" });
