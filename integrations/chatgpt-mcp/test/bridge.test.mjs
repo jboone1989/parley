@@ -43,11 +43,11 @@ test("renews local session token after Parley restart", async t => {
   assert.equal(count, 2);
 });
 
-test("rejects invalid outgoing messages before performing network calls", async () => {
+test("rejects invalid outgoing messages before performing network calls", () => {
   const bridge = new ParleyBridge();
-  await assert.rejects(bridge.send({ room: "../etc", text: "hello" }), /Invalid room/);
-  await assert.rejects(bridge.send({ target: "everyone", text: "hello" }), /Target/);
-  await assert.rejects(bridge.send({ text: " " }), /Message/);
+  assert.throws(() => bridge.send({ room: "../etc", text: "hello" }), /Invalid/);
+  assert.throws(() => bridge.send({ target: "everyone", text: "hello" }), /Target/);
+  assert.throws(() => bridge.send({ text: " " }), /Message/);
 });
 
 test("bounded room event log supports gap detection", async () => {
