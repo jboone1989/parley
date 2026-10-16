@@ -57,8 +57,12 @@ export class ParleyBridge {
     if (typeof text !== 'string' || !text.trim() || text.length > 12000) {
       throw new Error('Message must contain 1–12000 characters');
     }
+    const normalizedTarget = validTarget(target);
+    if (normalizedTarget === 'both' && solo) {
+      throw new Error('Solo cannot be combined with both agents');
+    }
     return this.call('/api/message', 'POST', {
-      room: validRoom(room), target: validTarget(target), text: text.trim(), solo: !!solo,
+      room: validRoom(room), target: normalizedTarget, text: text.trim(), solo: !!solo,
     });
   }
   async stop({ room = 'default', agent = null } = {}) {
