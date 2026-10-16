@@ -12,7 +12,7 @@ import { verifyRequest, authenticationChallenge, resourceMetadata, oauthEnabled 
 const root = dirname(fileURLToPath(import.meta.url));
 const uri = "ui://parley/room-v2.html";
 const widget = readFileSync(join(root, "public/widget.html"), "utf8").replace(
-  "/*BUNDLED_WIDGET*/", readFileSync(join(root, "public/widget.bundle.js"), "utf8")
+  "/*BUNDLED_WIDGET*/", () => readFileSync(join(root, "public/widget.bundle.js"), "utf8")
 );
 const bridge = new ParleyBridge();
 const securitySchemes = oauthEnabled() ? [{ type: "oauth2", scopes: ["parley:access"] }] : undefined;
