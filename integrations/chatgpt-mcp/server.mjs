@@ -35,11 +35,11 @@ function makeMcp() {
     title: "Open Parley room", description: "Show the embedded Parley chat panel in ChatGPT",
     inputSchema: { room: roomSchema }, ...secure, _meta: { ui: { resourceUri: uri } },
   }, async ({ room }) => reply({ ...(await bridge.snapshot(room)), activeRoom: room }, "Opened room " + room));
-  registerAppTool(mcp, "list_rooms", {
+  mcp.registerTool("list_rooms", {
     title: "List rooms", description: "List available Parley conversations",
     inputSchema: {}, ...secure,
   }, async () => reply(await bridge.rooms()));
-  registerAppTool(mcp, "get_room", {
+  mcp.registerTool("get_room", {
     title: "Read room", description: "Read Parley conversation history and agent statuses",
     inputSchema: { room: roomSchema }, ...secure,
   }, async ({ room }) => reply(await bridge.snapshot(room)));
@@ -50,14 +50,14 @@ function makeMcp() {
       text: z.string().min(1).max(12000), solo: z.boolean().default(false),
     }, ...secure, _meta: { ui: { resourceUri: uri } },
   }, async args => reply(await bridge.send(args), "Message accepted. Read the room or watch for replies."));
-  registerAppTool(mcp, "watch_room", {
+  mcp.registerTool("watch_room", {
     title: "Watch replies", description: "Incremental SSE updates with resumable cursor",
     inputSchema: {
       room: roomSchema, after: z.number().int().nonnegative().default(0),
       waitMs: z.number().int().min(0).max(8000).default(3000),
     }, ...secure,
   }, async args => reply(await bridge.watch(args)));
-  registerAppTool(mcp, "stop_reply", {
+  mcp.registerTool("stop_reply", {
     title: "Stop reply", description: "Stop Claude, Codex, or both",
     inputSchema: { room: roomSchema, agent: z.enum(["claude", "codex"]).nullable().default(null) }, ...secure,
   }, async args => reply(await bridge.stop(args)));
