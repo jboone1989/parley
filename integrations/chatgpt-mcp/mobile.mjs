@@ -47,7 +47,19 @@ window.__parleySetupMobile = () => {
     if (event.key === "Escape") more.open = false;
   });
   // On phones Enter inserts a newline; the send button remains explicit.
-  byId("input").addEventListener("keydown", event => {
+  const input = byId("input");
+  let desktopPlaceholder = input.placeholder;
+  const placeholder = () => {
+    if (input.placeholder !== "输入消息…") desktopPlaceholder = input.placeholder;
+    const value = media.matches ? "输入消息…" : desktopPlaceholder;
+    if (input.placeholder !== value) {
+      input.placeholder = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
+  new MutationObserver(placeholder).observe(input, { attributes: true, attributeFilter: ["placeholder"] });
+  media.addEventListener("change", placeholder); placeholder();
+  input.addEventListener("keydown", event => {
     if (media.matches && event.key === "Enter" && !event.ctrlKey && !event.metaKey && !event.isComposing) {
       event.stopImmediatePropagation();
     }

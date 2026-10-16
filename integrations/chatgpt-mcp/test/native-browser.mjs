@@ -179,8 +179,10 @@ try {
   await phone.setViewportSize({width:390,height:844});
   if (process.env.PARLEY_SCREENSHOTS) {
     mkdirSync(process.env.PARLEY_SCREENSHOTS,{recursive:true});
+    await phone.waitForFunction(() => !document.body.classList.contains("nav-open") && document.getElementById("sidebar").getBoundingClientRect().right <= 0);
     await phone.screenshot({path:join(process.env.PARLEY_SCREENSHOTS,"phone-chat.png")});
     await phone.locator("#navToggle").tap();
+    await phone.waitForFunction(() => document.getElementById("sidebar").getBoundingClientRect().left >= -1);
     await phone.screenshot({path:join(process.env.PARLEY_SCREENSHOTS,"phone-rooms.png")});
     await phone.locator("#mobileNavClose").tap();
   }
