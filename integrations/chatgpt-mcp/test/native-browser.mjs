@@ -91,11 +91,12 @@ try {
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.exposeFunction("__testCall", invoke);
   await page.goto("http://127.0.0.1:"+server.address().port);
-  await page.locator("#seat1 option").first().waitFor();
+  await page.locator("#seat1 option").first().waitFor({ state: "attached" });
   const create = async name => {
     await page.locator("#addRoomBtn").click(); await page.locator("#newRoomInput").fill(name);
     await page.locator("#newRoomCreate").click(); await page.waitForFunction(name => document.getElementById("roomTitle").textContent === name, name);
   };
+  console.log("native browser: creating rooms");
   await create("session-a"); await page.locator("#input").fill("会话 A 的草稿");
   await create("session-b"); await page.locator("#input").fill("会话 B 的草稿");
   await page.getByRole("button", { name: "session-a", exact: true }).click();
@@ -104,15 +105,18 @@ try {
   await page.waitForFunction(() => document.getElementById("input").value === "会话 B 的草稿");
   await page.reload(); await page.waitForFunction(() => document.getElementById("roomTitle").textContent === "session-b");
   assert.equal(await page.locator("#input").inputValue(), "会话 B 的草稿");
+  console.log("native browser: room switching, drafts and reload passed");
   await page.locator("#input").fill("发送测试");
   await page.locator("#fileInput").setInputFiles({ name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("附件原文 $&") });
   await page.locator("#sendBtn").click();
   await page.getByText("浏览器回复", { exact: false }).waitFor();
   assert.equal(Buffer.from(calls.find(c => c.args?.path === "/api/message").args.body.files[0].data,"base64").toString(), "附件原文 $&");
+  console.log("native browser: sending, stream and attachment passed");
   await page.locator("#settingsBtn").click(); await page.locator("#overlay").waitFor({state:"visible"});
   await page.locator("#s_roomnote").fill("Room note 原样"); await page.locator("#mSave").click();
   await page.locator("#overlay").waitFor({ state: "hidden" });
   assert.equal(rooms.get("session-b").room.cfg.roomNote, "Room note 原样");
+  console.log("native browser: settings passed");
   await page.getByRole("button",{name:"Rename session-b",exact:true}).click();
   await page.locator("dialog input").fill("session-renamed"); await page.locator("dialog button[type=submit]").click();
   await page.locator("dialog button[type=submit]").click();
