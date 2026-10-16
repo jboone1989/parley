@@ -1,24 +1,33 @@
-# ChatGPT MCP adapter for Parley
+# Native Parley in ChatGPT
 
 Private MCP Apps extension for Parley 1.2.1. Uses existing Claude Code and Codex CLI subscriptions, not separate model API keys.
 
 ## Features
-- ChatGPT embedded conversation panel for Claude, Codex and both
-- Send messages, list rooms, read history, stop replies
-- SSE-backed incremental updates with bounded cursor and resynchronization
-- Authenticated private MCP Streamable HTTP endpoint
-- Preserve the selected room and per-room drafts within the browser tab when
-  sandbox session storage is available; Chinese IME confirmation never sends.
-- Paginate event backlogs without dropping deltas; adapter restarts and expired
-  cursors trigger a snapshot, including any unfinished output cached by the bridge.
+The panel embeds the repository's original `ui/index.html`, `ui/styles.css` and
+`ui/app.js`. It does not maintain a second simplified conversation UI. Original
+controls and business logic cover creating, switching, renaming and deleting
+rooms; Talk/Work modes; provider/model/effort settings; automatic-turn limits;
+Pair review; lurk; seat sleep/wake; queues; scoped stop/retry; attachments;
+transcript downloads; receipts and token usage.
+
+`native_request` forwards the complete native business API through the existing
+authenticated loopback bridge. `watch_room` adapts SSE to resumable MCP polling,
+including backlogs, restarts and partial-output snapshots. The original six
+chat tools remain available for direct model use.
 
 ## Using the panel
-Open the Parley panel once and keep using its composer. Sending, reading, and
-watching messages return data without mounting another panel. Text streams are
-displayed verbatim, including line breaks and punctuation. Enter sends;
-Shift+Enter inserts a newline. Confirming a Chinese input candidate does not send.
-Switching rooms keeps separate drafts. A send acknowledgement never clears text
-typed after that send or a different room's draft.
+Open the Parley panel once and keep using it. The native sidebar's **+** creates
+another room; each room has separate history, settings and CLI sessions. Switching
+rooms does not create another ChatGPT panel. Per-room text drafts and the selected
+room survive reload when the host allows session storage. Chinese IME candidate
+confirmation does not send a message.
+
+The remote deployment requires three host adaptations: blocking confirm/prompt
+dialogs become in-panel dialogs with the same questions; the OS folder chooser
+becomes a server-path input; opening an OS file manager displays the server path.
+All confirmations remain explicit. Browser notifications and downloads depend on
+the ChatGPT host's browser permissions. The resource supports inline/fullscreen
+and prefers fullscreen for the full native interface.
 
 The panel follows native Parley's public output events; it does not expose hidden
 model reasoning or create a new ChatGPT assistant turn when an agent finishes.
@@ -50,3 +59,13 @@ Parley stays bound to 127.0.0.1 and retains its own per-process token and Host/O
 The widget uses MCP tool calls, not direct browser requests to Parley, to send/receive messages. The widget may stop polling when closed; persisted room history remains available. CI checks source/tests/build, but final Cloudflare OAuth and ChatGPT widget rendering require live integration tests.
 
 This adapter lives only in the user's Parley fork and does not alter the upstream runtime.
+
+## Tests
+`npm run build && npm test` checks the actual MCP transport, authorization,
+embedded native controls and JavaScript, complete route coverage, binary
+attachments, stream recovery and the browser transport shim. With the repository's
+root development dependencies and Chromium installed, run
+`node test/native-browser.mjs` for an original-UI browser test covering two rooms,
+draft switching/reload, sending/streaming, attachments, settings, rename/delete,
+transcript downloads and three viewport sizes. It uses a stub MCP host and spends
+no provider tokens. GitHub Actions runs that browser test as well.

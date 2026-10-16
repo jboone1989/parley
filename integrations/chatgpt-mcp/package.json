@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild ui.mjs --bundle --format=iife --target=es2022 --minify --outfile=public/widget.bundle.js",
+    "build": "esbuild native-transport.mjs --bundle --format=iife --target=es2022 --minify --outfile=public/widget.bundle.js",
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs"
   },

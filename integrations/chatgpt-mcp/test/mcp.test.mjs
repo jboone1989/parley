@@ -65,13 +65,13 @@ test("real MCP initializes and lists all tools without exposing unauthenticated 
   assert.equal(session.serverInfo.name, "parley-chatgpt");
   const listed = await request(2, "tools/list", {});
   assert.deepEqual(listed.tools.map(x => x.name).sort(), [
-    "get_room", "list_rooms", "open_room", "send_message", "stop_reply", "watch_room",
+    "get_room", "list_rooms", "native_request", "open_room", "send_message", "stop_reply", "watch_room",
   ]);
   const opener = listed.tools.find(tool => tool.name === "open_room");
   const uri = opener._meta.ui.resourceUri;
   assert.equal(opener._meta["openai/outputTemplate"], uri);
   assert.deepEqual(opener._meta["openai/ui"].entrypoints, [
-    { type: "global" }, { type: "thread" },
+    { type: "global", title: "Parley" },
   ]);
   for (const tool of listed.tools) {
     assert.equal(tool._meta["openai/widgetAccessible"], true, tool.name);
@@ -82,8 +82,9 @@ test("real MCP initializes and lists all tools without exposing unauthenticated 
   const resource = await request(3, "resources/read", { uri });
   const html = resource.contents.find(content => content.uri === uri);
   assert.equal(html.mimeType, "text/html;profile=mcp-app");
-  assert.match(html.text, /<textarea[^>]+id="draft"/);
-  assert.match(html.text, /id="send"/);
+  for (const id of ["input", "sendBtn", "addRoomBtn", "roomList", "overlay", "fileInput"]) {
+    assert.ok(html.text.includes('id="' + id + '"'), "Original Parley control missing: " + id);
+  }
   const bundle = readFileSync(join(cwd, "public/widget.bundle.js"), "utf8");
   assert.ok(html.text.includes(bundle), "UI resource must preserve bundled JavaScript verbatim");
 

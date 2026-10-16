@@ -22,3 +22,11 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run build
       - run: npm test
+      - name: Install native UI browser test dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: .
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: .
+      - name: Test original Parley UI through MCP
+        run: node test/native-browser.mjs

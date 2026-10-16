@@ -1,6 +1,5 @@
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -8,12 +7,12 @@ import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from "@model
 import { z } from "zod";
 import { ParleyBridge } from "./bridge.mjs";
 import { verifyRequest, authenticationChallenge, resourceMetadata, oauthEnabled } from "./auth.mjs";
+import { nativeRequest } from "./native-api.mjs";
+import { buildNativeHtml } from "./native-html.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const uri = "ui://parley/room-v4.html";
-const widget = readFileSync(join(root, "public/widget.html"), "utf8").replace(
-  "/*BUNDLED_WIDGET*/", () => readFileSync(join(root, "public/widget.bundle.js"), "utf8")
-);
+const uri = "ui://parley/native-v1.html";
+const widget = buildNativeHtml(root);
 const bridge = new ParleyBridge();
 const securitySchemes = oauthEnabled() ? [{ type: "oauth2", scopes: ["parley:access"] }] : undefined;
 const roomSchema = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/).default("default");
@@ -27,7 +26,8 @@ function makeMcp() {
     contents: [{
       uri, mimeType: RESOURCE_MIME_TYPE, text: widget,
       _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } },
-        "openai/widgetDescription": "Real-time Claude and Codex chat" },
+        "openai/ui": { availableDisplayModes: ["inline", "fullscreen"], preferredDisplayMode: "fullscreen" },
+        "openai/widgetDescription": "Original Parley interface: multiple rooms, settings, attachments, pair review and live output" },
     }],
   }));
   const secure = {
@@ -41,7 +41,7 @@ function makeMcp() {
       ...secure._meta,
       ui: { resourceUri: uri },
       "openai/outputTemplate": uri,
-      "openai/ui": { entrypoints: [{ type: "global" }, { type: "thread" }] },
+      "openai/ui": { entrypoints: [{ type: "global", title: "Parley" }] },
     },
   }, async ({ room }) => reply({ ...(await bridge.snapshot(room)), activeRoom: room }, "Opened room " + room));
   mcp.registerTool("list_rooms", {
@@ -70,6 +70,12 @@ function makeMcp() {
     title: "Stop reply", description: "Stop Claude, Codex, or both",
     inputSchema: { room: roomSchema, agent: z.enum(["claude", "codex"]).nullable().default(null) }, ...secure,
   }, async args => reply(await bridge.stop(args)));
+  mcp.registerTool("native_request", {
+    title: "Use native Parley features",
+    description: "Pass through the original Parley API: create/rename/delete rooms, configure agents and modes, manage pair review, queues and sleep, upload attachments and download transcripts. Reuses the existing panel.",
+    inputSchema: { path: z.string(), method: z.enum(["GET", "POST"]).default("GET"), body: z.unknown().optional() },
+    ...secure,
+  }, async args => reply(await nativeRequest(bridge, args), "Native Parley response"));
   return mcp;
 }
 const port = Number(process.env.PARLEY_PLUGIN_PORT || 8787);
