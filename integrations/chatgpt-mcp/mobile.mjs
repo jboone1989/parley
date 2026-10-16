@@ -1,7 +1,7 @@
 // Move original controls for phones, preserving all upstream event handlers.
 window.__parleySetupMobile = () => {
   const byId = id => document.getElementById(id);
-  const media = matchMedia("(max-width: 760px)");
+  const media = matchMedia("(max-width: 760px), (max-width: 960px) and (max-height: 500px)");
   const actions = document.createElement("section");
   actions.id = "mobileRoomActions";
   actions.setAttribute("aria-label", "会话操作");

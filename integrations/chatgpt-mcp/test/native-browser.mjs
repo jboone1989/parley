@@ -174,6 +174,8 @@ try {
   await phone.setViewportSize({width:390,height:420});
   await inside("#input"); await inside("#sendBtn");
   await phone.setViewportSize({width:844,height:390}); await inside("#sendBtn");
+  assert.ok(await phone.locator("#navToggle").isVisible(),"landscape phone must keep the drawer layout");
+  assert.ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth),"landscape must not overflow horizontally");
   await phone.setViewportSize({width:390,height:844});
   if (process.env.PARLEY_SCREENSHOTS) {
     mkdirSync(process.env.PARLEY_SCREENSHOTS,{recursive:true});
@@ -183,6 +185,7 @@ try {
     await phone.locator("#mobileNavClose").tap();
   }
   await phone.setViewportSize({width:1100,height:800});
+  await phone.locator("header #modeToggle").waitFor({state:"visible"});
   assert.equal(await phone.locator("header #modeToggle").count(),1,"desktop mode control must return to header");
   assert.equal(await phone.locator("#chipsRow > #hopWrap").count(),1,"desktop continuation control must return");
   await phone.close();
