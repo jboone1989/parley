@@ -145,6 +145,7 @@ app.ontoolresult = result => {
 async function boot() {
   await app.connect();
   window.__parleyStart(activeRoom || stored("parley.native.room") || "default"); started = true;
+  window.__parleySetupMobile?.();
   // Original actions now show a server path, rather than opening a file manager
   // on a different computer. All other native controls keep their upstream UI.
   const wsLabel = document.getElementById("openWsLabel");

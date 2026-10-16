@@ -26,13 +26,15 @@ export function buildNativeHtml(root, nativeRoot = join(root, "../../ui"), trans
   const html = readFileSync(join(nativeRoot, "index.html"), "utf8");
   const css = readFileSync(join(nativeRoot, "styles.css"), "utf8");
   const source = nativeAppSource(readFileSync(join(nativeRoot, "app.js"), "utf8"));
+  const mobileCss = readFileSync(join(root, "mobile.css"), "utf8");
+  const mobileScript = readFileSync(join(root, "mobile.mjs"), "utf8");
   const transport = transportOverride ?? readFileSync(join(root, "public/widget.bundle.js"), "utf8");
   const launch = `window.__parleyStart = function(__initialRoom) {\n${source}\n` +
     'window.__parleyNative = { loadRoom, refreshAfterGap, get room() { return state.room; } };\n};';
   return html
     .replace("<!--PARLEY_TOKEN-->", '<meta name="parley-token" content="mcp-transport">')
     .replace("<!--PARLEY_RUNTIME_PROTOCOL-->", '<meta name="parley-runtime-protocol" content="12">')
-    .replace(/<link rel="stylesheet" href="\/ui\/styles\.css[^\"]*">/, () => `<style>${css}</style>`)
+    .replace(/<link rel="stylesheet" href="\/ui\/styles\.css[^\"]*">/, () => `<style>${css}</style><style>${mobileCss}</style>`)
     .replace(/<script src="\/ui\/app\.js[^\"]*"><\/script>/, () =>
-      `<script>${scriptText(launch)}</script><script>${scriptText(transport)}</script>`);
+      `<script>${scriptText(launch)}</script><script>${scriptText(mobileScript)}</script><script>${scriptText(transport)}</script>`);
 }

@@ -1,7 +1,7 @@
 // Optional real-browser integration test of the original UI against a stub MCP
 // host. No model calls, provider login, or production mutation.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -131,6 +131,62 @@ try {
   for(const viewport of [{width:375,height:812},{width:768,height:1024},{width:1440,height:900}]) {
     await page.setViewportSize(viewport); assert.ok(await page.locator("#input").isVisible());
   }
+  const phone = await browser.newPage({ viewport: {width:390,height:844}, isMobile:true, hasTouch:true });
+  phone.on("pageerror", error => errors.push(error.message));
+  await phone.exposeFunction("__testCall", invoke);
+  await phone.goto("http://127.0.0.1:"+server.address().port);
+  await phone.locator("#pills .pill").first().waitFor();
+  const inside = async selector => {
+    const box = await phone.locator(selector).boundingBox();
+    const size = phone.viewportSize();
+    assert.ok(box && box.x >= -1 && box.y >= -1 && box.x+box.width <= size.width+1 && box.y+box.height <= size.height+1, selector+" outside viewport: "+JSON.stringify(box));
+  };
+  for (const width of [320,375,390,430]) {
+    await phone.setViewportSize({width,height:844});
+    await inside("#input"); await inside("#sendBtn");
+    assert.ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "page must not overflow horizontally");
+    assert.ok((await phone.locator("header").boundingBox()).height <= 120, "header must leave room for chat");
+  }
+  await phone.setViewportSize({width:390,height:844});
+  await phone.locator("#navToggle").tap();
+  await phone.locator("#addRoomBtn").tap(); await phone.locator("#newRoomInput").fill("phone-session");
+  await phone.locator("#newRoomCreate").tap();
+  await phone.waitForFunction(() => document.getElementById("roomTitle").textContent === "phone-session");
+  await phone.locator("#navToggle").tap();
+  assert.ok(await phone.getByRole("button",{name:"Rename phone-session",exact:true}).isVisible(), "rename must work without hover");
+  await phone.getByRole("button",{name:"session-a",exact:true}).tap();
+  await phone.waitForFunction(() => document.getElementById("roomTitle").textContent === "session-a");
+  await phone.locator("#input").fill("手机换行");
+  const beforeSend = calls.filter(c => c.args?.path === "/api/message").length;
+  await phone.locator("#input").press("End"); await phone.locator("#input").press("Enter");
+  assert.equal(await phone.locator("#input").inputValue(),"手机换行\n");
+  assert.equal(calls.filter(c => c.args?.path === "/api/message").length,beforeSend,"phone Enter must not send");
+  await phone.locator("#sendBtn").tap(); await phone.getByText("浏览器回复",{exact:false}).waitFor();
+  await phone.locator("#mobileOptions summary").tap(); await phone.locator("#hopBtn").tap();
+  await phone.locator("#hopMenu").waitFor({state:"visible"});
+  await phone.locator("#hopMenu [data-hop-choice=solo]").tap();
+  await phone.locator("#settingsBtn").tap();
+  await phone.locator("#overlay").waitFor({state:"visible"});
+  const columns = await phone.locator(".modal .mgrid").first().evaluate(el => getComputedStyle(el).gridTemplateColumns);
+  assert.equal(columns.trim().split(/\s+/).length,1,"phone settings must use one column");
+  await phone.locator("#mCancel").scrollIntoViewIfNeeded(); await phone.locator("#mCancel").tap();
+  await phone.locator("#overlay").waitFor({state:"hidden"});
+  await phone.setViewportSize({width:390,height:420});
+  await inside("#input"); await inside("#sendBtn");
+  await phone.setViewportSize({width:844,height:390}); await inside("#sendBtn");
+  await phone.setViewportSize({width:390,height:844});
+  if (process.env.PARLEY_SCREENSHOTS) {
+    mkdirSync(process.env.PARLEY_SCREENSHOTS,{recursive:true});
+    await phone.screenshot({path:join(process.env.PARLEY_SCREENSHOTS,"phone-chat.png")});
+    await phone.locator("#navToggle").tap();
+    await phone.screenshot({path:join(process.env.PARLEY_SCREENSHOTS,"phone-rooms.png")});
+    await phone.locator("#mobileNavClose").tap();
+  }
+  await phone.setViewportSize({width:1100,height:800});
+  assert.equal(await phone.locator("header #modeToggle").count(),1,"desktop mode control must return to header");
+  assert.equal(await phone.locator("#chipsRow > #hopWrap").count(),1,"desktop continuation control must return");
+  await phone.close();
+  console.log("mobile browser: touch rooms, newline/send, options, single-column settings, keyboard-sized viewport and desktop restoration passed");
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({ok:true,createdRooms:2,roomSwitchDrafts:true,reload:true,sendAndStream:true,attachment:true,settings:true,rename:true,delete:true,transcript:true,responsiveSizes:3}));
 } finally { await browser.close(); server.close(); }
