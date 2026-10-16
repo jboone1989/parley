@@ -1,68 +1,143 @@
 import { App } from "@modelcontextprotocol/ext-apps";
-const app = new App({ name: "Parley Chat", version: "0.1.0" });
+import { createRoomState, applyRoomSnapshot, applyRoomEvent, visibleStreams } from "./room-state.mjs";
+
+const app = new App({ name: "Parley Chat", version: "0.1.1" });
 const $ = id => document.getElementById(id);
-const state = { room:"default",cursor:0,entries:[],streams:{},busy:{},connected:false };
-const error = msg => { $("error").textContent = msg || ""; };
-async function call(name, params={}) {
-  const result = await app.callServerTool({ name, arguments:params });
-  if (result.isError) throw Error(result.content?.find(x=>x.type==="text")?.text || "Tool failed");
+const state = createRoomState();
+const rows = new Map();
+let generation = 0;
+let revision = 0;
+const error = message => { $("error").textContent = message || ""; };
+
+async function call(name, params = {}) {
+  const result = await app.callServerTool({ name, arguments: params });
+  if (result.isError) throw Error(result.content?.find(item => item.type === "text")?.text || "Tool failed");
   if (result.structuredContent) return result.structuredContent;
-  const body=result.content?.find(x=>x.type==="text")?.text;
-  try {return JSON.parse(body || "{}");} catch {return {};}
+  try { return JSON.parse(result.content?.find(item => item.type === "text")?.text || "{}"); }
+  catch { return {}; }
 }
-function bubble(entry, streaming=false) {
-  const item=document.createElement("article");
-  const who=String(entry.author||entry.agent||entry.kind||"system");
-  item.className="item"+(who==="user"?" mine":"");
-  const top=document.createElement("div");top.className="author";
-  top.textContent=(who==="user"?"你":who==="claude"?"Claude":who==="codex"?"Codex":who)+(streaming?" · 正在生成":"");
-  const body=document.createElement("div");body.className="body";body.textContent=String(entry.text||entry.body||"");
-  item.append(top,body);return item;
+
+function bubble(key, entry, streaming = false) {
+  let item = rows.get(key);
+  if (!item) {
+    item = document.createElement("article");
+    const author = document.createElement("div");
+    author.className = "author";
+    const body = document.createElement("div");
+    body.className = "body";
+    item.append(author, body);
+    rows.set(key, item);
+  }
+  const who = String(entry.author || entry.agent || entry.kind || "system");
+  item.className = "item" + (who === "user" ? " mine" : "");
+  const label = ({ user: "你", claude: "Claude", codex: "Codex" }[who] || who) + (streaming ? " · 正在生成" : "");
+  const text = String(entry.text ?? entry.body ?? "");
+  if (item.children[0].textContent !== label) item.children[0].textContent = label;
+  if (item.children[1].textContent !== text) item.children[1].textContent = text;
+  return item;
 }
+
 function render() {
-  const el=$("messages"),bottom=el.scrollHeight-el.scrollTop-el.clientHeight<70, frag=document.createDocumentFragment();
-  for(const entry of state.entries.slice(-150)) frag.append(bubble(entry));
-  for(const [agent,text] of Object.entries(state.streams)) if(text)frag.append(bubble({agent,text},true));
-  if(!frag.childNodes.length) {const empty=document.createElement("small");empty.textContent="暂无消息";frag.append(empty);}
-  el.replaceChildren(frag);if(bottom)el.scrollTop=el.scrollHeight;
-  $("busy").textContent=Object.keys(state.busy).filter(k=>state.busy[k]).join(" · ");
+  const el = $("messages");
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 70;
+  const wanted = new Map();
+  for (const entry of state.entries.slice(-150)) wanted.set("entry:" + entry.n, bubble("entry:" + entry.n, entry));
+  for (const [agent, text] of visibleStreams(state)) wanted.set("live:" + agent, bubble("live:" + agent, { agent, text }, true));
+  if (!wanted.size) wanted.set("empty", bubble("empty", { kind: "system", text: "暂无消息" }));
+  for (const [key, node] of rows) {
+    if (!wanted.has(key)) { node.remove(); rows.delete(key); }
+  }
+  // Keep existing message nodes and the user's scroll position during streaming.
+  if (!el.dataset.ready) { el.replaceChildren(); el.dataset.ready = "true"; }
+  let index = 0;
+  for (const node of wanted.values()) {
+    if (el.children[index] !== node) el.insertBefore(node, el.children[index] || null);
+    index++;
+  }
+  if (atBottom) el.scrollTop = el.scrollHeight;
+  $("busy").textContent = Object.keys(state.busy).filter(agent => state.busy[agent]).join(" · ");
 }
-async function loadRoom(){const result=await call("get_room",{room:state.room});if(Array.isArray(result.entries))state.entries=result.entries;state.busy=result.room?.busy||{};render();}
-async function loadRooms(){const result=await call("list_rooms");const names=(result.rooms||[]).map(r=>typeof r==="string"?r:r.name).filter(Boolean);const select=$("room");select.replaceChildren();
-  for(const name of names.length?names:["default"]){const opt=document.createElement("option");opt.value=name;opt.textContent=name;select.append(opt);}
-  if(names.includes(state.room))select.value=state.room;else{state.room="default";select.value="default";}
+
+async function loadRoom() {
+  const room = state.room, epoch = generation, before = revision;
+  const snapshot = await call("get_room", { room });
+  if (epoch !== generation || room !== state.room) return;
+  applyRoomSnapshot(state, snapshot, { preserveLive: before !== revision });
+  render();
 }
-function onEvent(event){
-  if(event.type==="stream"&&event.agent)state.streams[event.agent]=event.text||"";
-  else if(event.type==="status"&&event.agent)state.busy[event.agent]=!["done","idle"].includes(event.phase||"");
-  else if(event.type==="reset"){state.entries=[];state.streams={};loadRoom().catch(e=>error(e.message));}
-  else if(["entry","receipt","room","queue","end","result","renamed"].includes(event.type)){
-    if(event.agent)delete state.streams[event.agent];
-    clearTimeout(onEvent.reload);onEvent.reload=setTimeout(()=>loadRoom().catch(e=>error(e.message)),250);
+
+async function loadRooms() {
+  const result = await call("list_rooms");
+  const names = (result.rooms || []).map(room => typeof room === "string" ? room : room.name).filter(Boolean);
+  const select = $("room");
+  select.replaceChildren();
+  for (const name of names.length ? names : ["default"]) {
+    const option = document.createElement("option");
+    option.value = name; option.textContent = name; select.append(option);
+  }
+  if (!names.includes(state.room)) state.room = names[0] || "default";
+  select.value = state.room;
+}
+
+async function poll() {
+  while (state.connected) {
+    if (document.visibilityState === "hidden") { await new Promise(resolve => setTimeout(resolve, 1200)); continue; }
+    const room = state.room, epoch = generation;
+    try {
+      const result = await call("watch_room", { room, after: state.cursor, waitMs: 3000 });
+      if (epoch !== generation || room !== state.room) continue;
+      let resync = !!result.resync;
+      if (!resync) for (const event of result.events || []) { revision++; resync = applyRoomEvent(state, event) || resync; }
+      state.cursor = result.cursor ?? state.cursor;
+      if (resync) await loadRoom();
+      if (epoch !== generation) continue;
+      $("state").textContent = result.connected ? "实时连接" : "正在重连";
+      error(""); render();
+    } catch (err) {
+      if (epoch !== generation) continue;
+      $("state").textContent = "连接中断"; error(err.message);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
   }
 }
-async function poll(){
-  while(state.connected){
-    if(document.visibilityState==="hidden"){await new Promise(resolve=>setTimeout(resolve,1200));continue;}
-    try{
-      const result=await call("watch_room",{room:state.room,after:state.cursor,waitMs:3000});
-      if(result.resync)await loadRoom();
-      for(const event of result.events||[])onEvent(event);
-      state.cursor=result.cursor??state.cursor;$("state").textContent=result.connected?"实时连接":"正在重连";render();
-    }catch(e){$("state").textContent="连接中断";error(e.message);await new Promise(r=>setTimeout(r,2000));}
-  }
-}
-$("target").addEventListener("change",()=>{$("solo").disabled=$("target").value==="both";if($("solo").disabled)$("solo").checked=false;});
-$("solo").disabled=$("target").value==="both";
-$("send").addEventListener("click",async()=>{
-  const message=$("draft").value.trim();if(!message)return;
-  const btn=$("send");btn.disabled=true;error("");
-  try{await call("send_message",{room:state.room,target:$("target").value,text:message,solo:$("target").value!=="both"&&$("solo").checked});$("draft").value="";await loadRoom();}
-  catch(e){error(e.message);}finally{btn.disabled=false;}
+
+$("target").addEventListener("change", () => {
+  $("solo").disabled = $("target").value === "both";
+  if ($("solo").disabled) $("solo").checked = false;
 });
-$("draft").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("send").click();}});
-$("stop").addEventListener("click",async()=>{try{await call("stop_reply",{room:state.room,agent:null});await loadRoom();}catch(e){error(e.message);}});
-$("refresh").addEventListener("click",()=>loadRoom().catch(e=>error(e.message)));
-$("room").addEventListener("change",async e=>{state.room=e.target.value;state.cursor=0;state.streams={};await loadRoom().catch(err=>error(err.message));});
-app.ontoolresult=result=>{const v=result.structuredContent;if(v?.entries){if(v.activeRoom)state.room=v.activeRoom;state.entries=v.entries;render();}};
-(async()=>{try{await app.connect();await loadRooms();await loadRoom();state.connected=true;poll();}catch(e){error(e.message);$("state").textContent="未连接";}})();
+$("solo").disabled = $("target").value === "both";
+$("send").addEventListener("click", async () => {
+  const message = $("draft").value.trim();
+  if (!message) return;
+  const button = $("send"); button.disabled = true; error("");
+  try {
+    await call("send_message", { room: state.room, target: $("target").value, text: message, solo: $("target").value !== "both" && $("solo").checked });
+    $("draft").value = ""; await loadRoom();
+  } catch (err) { error(err.message); }
+  finally { button.disabled = false; }
+});
+$("draft").addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("send").click(); }
+});
+$("stop").addEventListener("click", async () => {
+  try { await call("stop_reply", { room: state.room, agent: null }); await loadRoom(); }
+  catch (err) { error(err.message); }
+});
+$("refresh").addEventListener("click", () => loadRoom().catch(err => error(err.message)));
+$("room").addEventListener("change", async event => {
+  generation++; revision++;
+  Object.assign(state, createRoomState(event.target.value), { connected: true });
+  render(); await loadRoom().catch(err => error(err.message));
+});
+app.ontoolresult = result => {
+  const snapshot = result.structuredContent;
+  if (!snapshot?.entries) return;
+  const room = snapshot.activeRoom || snapshot.room?.name || state.room;
+  if (room !== state.room) { generation++; Object.assign(state, createRoomState(room), { connected: state.connected }); }
+  applyRoomSnapshot(state, snapshot); render();
+  if ($("room").querySelector(`option[value="${state.room}"]`)) $("room").value = state.room;
+};
+(async () => {
+  try { await app.connect(); await loadRooms(); await loadRoom(); state.connected = true; poll(); }
+  catch (err) { error(err.message); $("state").textContent = "未连接"; }
+})();

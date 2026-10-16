@@ -10,7 +10,7 @@ import { ParleyBridge } from "./bridge.mjs";
 import { verifyRequest, authenticationChallenge, resourceMetadata, oauthEnabled } from "./auth.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const uri = "ui://parley/room-v2.html";
+const uri = "ui://parley/room-v3.html";
 const widget = readFileSync(join(root, "public/widget.html"), "utf8").replace(
   "/*BUNDLED_WIDGET*/", () => readFileSync(join(root, "public/widget.bundle.js"), "utf8")
 );
@@ -35,7 +35,7 @@ function makeMcp() {
     _meta: { "openai/widgetAccessible": true },
   };
   registerAppTool(mcp, "open_room", {
-    title: "Open Parley room", description: "Show the embedded Parley chat panel in ChatGPT",
+    title: "Open Parley room", description: "Open the persistent Parley chat panel once when requested. Reuse the existing panel for subsequent messages; do not reopen it to read or send replies.",
     inputSchema: { room: roomSchema }, ...secure,
     _meta: {
       ...secure._meta,
