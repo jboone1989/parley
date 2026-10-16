@@ -52,10 +52,12 @@ async function poll(){
     }catch(e){$("state").textContent="连接中断";error(e.message);await new Promise(r=>setTimeout(r,2000));}
   }
 }
+$("target").addEventListener("change",()=>{$("solo").disabled=$("target").value==="both";if($("solo").disabled)$("solo").checked=false;});
+$("solo").disabled=$("target").value==="both";
 $("send").addEventListener("click",async()=>{
   const message=$("draft").value.trim();if(!message)return;
   const btn=$("send");btn.disabled=true;error("");
-  try{await call("send_message",{room:state.room,target:$("target").value,text:message,solo:$("solo").checked});$("draft").value="";await loadRoom();}
+  try{await call("send_message",{room:state.room,target:$("target").value,text:message,solo:$("target").value!=="both"&&$("solo").checked});$("draft").value="";await loadRoom();}
   catch(e){error(e.message);}finally{btn.disabled=false;}
 });
 $("draft").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("send").click();}});
