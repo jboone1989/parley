@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "claude-connector": {
+      "type": "streamable-http",
+      "url": "https://claude-mcp.livingruntime.com/mcp",
+      "extensions": {
+        "com.openai": {"auth": {"type": "oauth", "client": {"mode": "dcr"}, "baseScopes": [], "defaultScopes": []}}
+      }
+    }
+  }
+}
