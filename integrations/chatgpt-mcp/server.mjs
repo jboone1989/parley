@@ -13,7 +13,7 @@ import { createPanelHandler } from "./panel-server.mjs";
 import { buildNativeHtml } from "./native-html.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const uri = "ui://parley/native-direct-v2.html";
+const uri = "ui://parley/native-direct-v3.html";
 const widget = buildNativeHtml(root);
 const bridge = new ParleyBridge();
 const panelSessions = new PanelSessions();
@@ -28,7 +28,7 @@ function makeMcp() {
   const mcp = new McpServer({ name: "parley-chatgpt", version: "0.1.0" });
   // ChatGPT can retain tool metadata and saved panels across server upgrades.
   // Keep previously advertised resources readable while new clients use uri.
-  for (const resourceUri of [uri, "ui://parley/native-v1.html"]) {
+  for (const resourceUri of [uri, "ui://parley/native-direct-v2.html", "ui://parley/native-v1.html"]) {
     registerAppResource(mcp, resourceUri === uri ? "Parley chat" : "Parley saved chat", resourceUri, {}, async () => ({
     contents: [{
       uri: resourceUri, mimeType: RESOURCE_MIME_TYPE, text: widget,

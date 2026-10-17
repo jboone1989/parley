@@ -47,8 +47,12 @@ function transportStatus(ready, connecting = false) {
     status.style.cssText = "padding:6px 12px;font-size:12px;color:var(--text-dim);background:var(--bg2)";
     document.querySelector("header").after(status);
   }
-  status.hidden = ready;
-  status.textContent = connecting ? "正在连接 Parley…" : "直连暂不可用，正在使用备用连接。";
+  status.hidden = false;
+  const last = performance.lastRequest;
+  const detail = last ? " · 最近请求 " + last.elapsedMs + " ms" +
+    (last.serverMs === undefined ? "" : "（服务端 " + last.serverMs + " ms）") : "";
+  status.textContent = connecting ? "正在连接 Parley…" :
+    ready ? "直连（HTTPS）" + detail : "直连暂不可用，正在使用备用连接。" + detail;
   if (!connecting && !ready) {
     const retry = document.createElement("button"); retry.textContent = "重试直连";
     retry.style.cssText = "text-decoration:underline;margin-left:8px;min-height:32px";
@@ -60,15 +64,28 @@ function transportStatus(ready, connecting = false) {
     status.append(retry);
   }
 }
+function recordRequest(args, mode, began, result) {
+  performance.lastRequest = { mode, path: args.path.split("?")[0], method: args.method,
+    elapsedMs: Date.now() - began, status: result?.status,
+    ...(Number.isFinite(result?.serverMs) ? {serverMs:result.serverMs} : {}) };
+  if (document.getElementById("transportStatus")) transportStatus(!!direct?.ready);
+}
 async function nativeRemote(args) {
   if (direct?.ready) {
-    try { performance.directCalls++; return await direct.request(args); }
+    const began = Date.now();
+    try {
+      performance.directCalls++;
+      const result = await direct.request(args);
+      recordRequest(args, "direct", began, result); return result;
+    }
     catch (error) {
-      direct.ready = false; transportStatus(false);
+      direct.ready = false; recordRequest(args, "direct", began);
       if (args.method !== "GET") throw Error("操作结果未确认，请检查会话状态后再重试。");
     }
   }
-  return call("native_request", args);
+  const began = Date.now();
+  const result = await call("native_request", args);
+  recordRequest(args, "mcp", began, result); return result;
 }
 function nativeRead(url) {
   const path = url.pathname + url.search, key = generation + ":" + path;

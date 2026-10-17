@@ -7,6 +7,10 @@ export function nativeAppSource(source) {
   // Business logic and rendering stay upstream. Only browser-host facilities
   // unavailable in an embedded MCP App are redirected to the host adapter.
   return source
+    // A config response already contains the authoritative summary. Do not
+    // wait for a second SSE/poll delivery before reflecting a saved mode.
+    .replace('const mode = b.dataset.m;', 'const room = state.room;\n    const mode = b.dataset.m;')
+    .replace("    try { await api(\"/api/config\", { room: state.room, config: { mode } }); refreshRooms(); }\n    catch (e) { toast(e.message, true); }", "    if (b.disabled || state.room !== room) return;\n    const controls = [...document.querySelectorAll(\".mbtn\")];\n    const labels = controls.map(button => button.textContent);\n    controls.forEach(button => { button.disabled = true; });\n    b.textContent += \"…\"; b.setAttribute(\"aria-busy\", \"true\");\n    try {\n      const saved = await api(\"/api/config\", { room, config: { mode } });\n      if (state.room === room) applySummary({ ...state.summary, cfg: { ...state.summary.cfg, mode: saved.room.cfg.mode } });\n      refreshRooms();\n    } catch (e) { toast(e.message, true); }\n    finally {\n      controls.forEach((button, index) => {\n        button.disabled = false; button.textContent = labels[index];\n        button.removeAttribute(\"aria-busy\");\n      });\n    }")
     .replace('new URLSearchParams(location.search).get("room") || "default"', '__initialRoom || "default"')
     .replace(/\bhistory\.replaceState\(/g, "window.__parleyHistory(")
     .replace(/\bconfirm\(/g, "await window.__parleyConfirm(")

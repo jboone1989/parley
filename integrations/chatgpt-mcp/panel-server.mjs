@@ -71,6 +71,7 @@ export function createPanelHandler({ bridge, sessions }) {
     if (!validOrigin(origin, sessions.allowLocal)) { json(res, 403, { error: "Origin required" }); return true; }
     res.setHeader("access-control-allow-origin", origin);
     res.setHeader("vary", "Origin");
+    res.setHeader("access-control-expose-headers", "Server-Timing");
     res.setHeader("x-content-type-options", "nosniff");
     if (req.method === "OPTIONS") {
       res.writeHead(204, { "access-control-allow-methods": "GET, POST, OPTIONS",

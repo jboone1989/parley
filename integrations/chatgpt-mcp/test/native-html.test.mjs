@@ -29,3 +29,54 @@ test("every upstream API path has a bridge, event transport, or explicit desktop
     assert.ok(supported.has(path), "Unbridged native feature: " + path);
   }
 });
+
+function modeFixture() {
+  let settle;
+  const buttons = ["talk", "work"].map(mode => ({
+    dataset: {m:mode}, textContent:mode, disabled:false, attributes:{},
+    setAttribute(name,value) { this.attributes[name]=value; },
+    removeAttribute(name) { delete this.attributes[name]; },
+  }));
+  const fixture = {
+    document: {querySelectorAll:()=>buttons},
+    state: {room:"a",summary:{cfg:{mode:"talk"},seats:[],agents:{}}},
+    api: () => new Promise((resolve,reject) => { settle={resolve,reject}; }),
+    applySummary: summary => { fixture.state.summary=summary; fixture.applied++; },
+    refreshRooms:()=>{}, toast:message=>fixture.errors.push(message),
+    applied:0, errors:[], buttons, ack:()=>settle,
+  };
+  const transformed=nativeAppSource(source);
+  const begin=transformed.indexOf('document.querySelectorAll(".mbtn").forEach((b) => {');
+  const end=transformed.indexOf("// Two different questions",begin);
+  assert.ok(begin>=0&&end>begin);
+  vm.runInNewContext(transformed.slice(begin,end),fixture);
+  return fixture;
+}
+
+test("mode controls acknowledge clicks immediately and use the save response without waiting for SSE", async()=>{
+  const f=modeFixture(), work=f.buttons[1];
+  const pending=work.onclick();
+  assert.equal(work.attributes["aria-busy"],"true");
+  assert.equal(work.textContent,"work…");
+  assert.ok(f.buttons.every(button=>button.disabled));
+  assert.equal(f.state.summary.cfg.mode,"talk","pending permission changes must not appear confirmed");
+  f.state.summary.liveVersion = "newer SSE";
+  f.ack().resolve({room:{cfg:{mode:"work"},liveVersion:"older response"}});
+  await pending;
+  assert.equal(f.state.summary.cfg.mode,"work");
+  assert.equal(f.applied,1);
+  assert.equal(f.state.summary.liveVersion,"newer SSE","saving mode must preserve newer agent state");
+  assert.equal(work.textContent,"work");
+  assert.ok(f.buttons.every(button=>!button.disabled));
+});
+
+test("failed mode saves keep the previous mode and late responses cannot overwrite another room", async()=>{
+  const failed=modeFixture(), pending=failed.buttons[1].onclick();
+  failed.ack().reject(Error("rejected")); await pending;
+  assert.equal(failed.state.summary.cfg.mode,"talk");
+  assert.deepEqual(failed.errors,["rejected"]);
+  assert.ok(failed.buttons.every(button=>!button.disabled));
+  const moved=modeFixture(), late=moved.buttons[1].onclick();
+  moved.state.room="b"; moved.ack().resolve({room:{cfg:{mode:"work"}}}); await late;
+  assert.equal(moved.applied,0);
+});

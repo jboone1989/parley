@@ -42,3 +42,10 @@ test("SSE decoding preserves Unicode, cursor boundaries and cancellation",async(
   }
   assert.ok(cancelled);
 });
+
+test("direct request exposes server time separately from the browser round trip",async()=>{
+  const client=new PanelTransport({authorize:async()=>session(),fetch:async()=>Response.json(
+    {status:200,json:{ok:true}},{headers:{"server-timing":"parley;dur=12.5"}})});
+  const result=await client.request({path:"/api/rooms",method:"GET"});
+  assert.equal(result.serverMs,12.5);
+});

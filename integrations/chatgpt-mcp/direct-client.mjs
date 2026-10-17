@@ -37,7 +37,10 @@ export class PanelTransport {
     const response = await this.send("/request", { method: "POST",
       headers: { "content-type": "application/json" }, body: JSON.stringify(args),
       signal: AbortSignal.timeout(35000) });
-    return response.json();
+    const result = await response.json();
+    const timing = response.headers.get("server-timing")?.match(/(?:^|,)\s*parley;dur=([\d.]+)/);
+    if (timing && Number.isFinite(Number(timing[1]))) result.serverMs = Number(timing[1]);
+    return result;
   }
   async *events({ room, after, signal }) {
     const response = await this.send("/events?room=" + encodeURIComponent(room) + "&after=" + after,

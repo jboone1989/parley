@@ -21,7 +21,7 @@ const providers = Object.fromEntries(["claude", "codex"].map(id => [id, {
 }]));
 const rooms = new Map(), events = new Map(), calls = [];
 const useDirect = process.env.PARLEY_TEST_DIRECT === "1";
-let sessions, htmlOrigin;
+let sessions, htmlOrigin, modeRequestGate;
 function makeRoom(name) {
   const room = {
     name, dir: "/test/rooms/" + name, workspace: "/test/rooms/" + name + "/workspace", git: null,
@@ -82,7 +82,8 @@ async function invoke(name, args, source = "mcp") {
     rooms.delete(body.room); events.delete(body.room); return response({ rooms: [...rooms.keys()] });
   }
   if (url.pathname === "/api/config") {
-    Object.assign(rooms.get(body.room).room.cfg, body.config); return response(rooms.get(body.room).room);
+    if (body.config?.mode && modeRequestGate) await modeRequestGate;
+    Object.assign(rooms.get(body.room).room.cfg, body.config); return response({room: rooms.get(body.room).room});
   }
   if (url.pathname === "/api/transcript") return { status: 200, headers: { "content-type": "text/markdown", "x-parley-runtime-protocol": "12" }, base64: Buffer.from("# 中文 transcript $&\n").toString("base64") };
   throw Error("Unhandled test route " + args.path);
@@ -139,6 +140,21 @@ try {
   await page.reload(); await page.waitForFunction(() => document.getElementById("roomTitle").textContent === "session-b");
   assert.equal(await page.locator("#input").inputValue(), "会话 B 的草稿");
   console.log("native browser: room switching, drafts and reload passed");
+
+  let releaseMode;
+  modeRequestGate=new Promise(resolve=>{releaseMode=resolve;});
+  await page.locator('.mbtn[data-m="work"]').click();
+  await page.locator("dialog button[type=submit]").click();
+  await page.locator('.mbtn[data-m="work"][aria-busy="true"]').waitFor();
+  assert.ok(await page.locator('.mbtn[data-m="talk"]').isDisabled());
+  assert.ok(await page.locator('.mbtn[data-m="talk"]').evaluate(el=>el.classList.contains("active")));
+  releaseMode(); modeRequestGate=null;
+  await page.locator('.mbtn[data-m="work"].active:not([aria-busy])').waitFor();
+  assert.ok(await page.locator("#transportStatus").isVisible());
+  assert.match(await page.locator("#transportStatus").innerText(),useDirect?/直连（HTTPS）/:/备用连接/);
+  assert.ok((await page.evaluate(()=>window.__parleyPerformance())).lastRequest.elapsedMs>=0);
+  console.log("native browser: mode feedback is immediate and saved mode updates without SSE");
+
   await page.locator("#input").fill("发送测试");
   await page.locator("#fileInput").setInputFiles({ name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("附件原文 $&") });
   await page.locator("#sendBtn").click();

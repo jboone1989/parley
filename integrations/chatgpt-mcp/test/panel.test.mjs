@@ -62,6 +62,7 @@ test("direct HTTP rejects unauthenticated/cross-origin access and streams resuma
   assert.equal(snapshot.status,200);const data=await snapshot.json();
   assert.equal(data.json.cursor,4);assert.equal(data.json.panel.rooms.rooms[0].name,"a");
   assert.ok(snapshot.headers.get("server-timing"));
+  assert.match(snapshot.headers.get("access-control-expose-headers"),/server-timing/i);
   const forbidden=await fetch(base+"/panel/request",{method:"POST",headers:{...headers,"content-type":"application/json"},
     body:JSON.stringify({path:"https://attacker.test/",method:"POST"})});
   assert.equal(forbidden.status,400);assert.equal(writes,0);
