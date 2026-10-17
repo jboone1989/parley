@@ -1,0 +1,45 @@
+name: ChatGPT MCP adapter
+on:
+  push:
+    paths:
+      - 'integrations/chatgpt-mcp/**'
+      - '.github/workflows/chatgpt-mcp.yml'
+  pull_request:
+    paths:
+      - 'integrations/chatgpt-mcp/**'
+      - '.github/workflows/chatgpt-mcp.yml'
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/chatgpt-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npm test
+      - name: Install native UI browser test dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: .
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: .
+      - name: Test original Parley UI through MCP
+        run: node test/native-browser.mjs
+        env:
+          PARLEY_SCREENSHOTS: test-screenshots
+      - name: Test direct HTTP and SSE through the original UI
+        run: node test/native-browser.mjs
+        env:
+          PARLEY_TEST_DIRECT: '1'
+          PARLEY_SCREENSHOTS: test-screenshots/direct
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parley-mobile-preview
+          path: integrations/chatgpt-mcp/test-screenshots/
+          if-no-files-found: ignore

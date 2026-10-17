@@ -1,0 +1,72 @@
+/* Embedded phone layout; the original desktop stylesheet stays intact. */
+#mobileRoomActions, #mobileNavClose, #mobileOptions { display: none; }
+@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
+  html, body { width: 100%; overscroll-behavior: none; }
+  #app { height: var(--parley-visible-height, 100dvh); max-height: 100dvh; }
+  #main, #chatWrap, #roomList { min-height: 0; }
+  #main > header { padding: 6px 10px; gap: 6px; flex-wrap: wrap; flex-shrink: 0; background: var(--bg2); backdrop-filter: none; }
+  #navToggle { display: flex; }
+  body.nav-open #navScrim { display: block; }
+  body.nav-open #sidebar { transform: none; box-shadow: 0 0 40px #0008; }
+  #navToggle, #settingsBtn { min-width: 44px; min-height: 44px; justify-content: center; font-size: 20px; padding: 6px; }
+  #roomTitle { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #pills { order: 10; width: 100%; margin: 0; gap: 6px; min-width: 0; }
+  .pill { flex: 1; min-width: 0; padding: 2px 8px; gap: 5px; min-height: 44px; }
+  .pill b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill .pinfo { display: none; }
+  .pill .st { flex-shrink: 0; }
+  .pill .ear, .pill .moon { min-width: 36px; min-height: 44px; font-size: 17px; }
+  .pill .ear { margin-left: auto; }
+  #chat { padding: 14px 10px 10px; gap: 14px; }
+  .msg { max-width: 96%; }
+  .bubble { font-size: 15px; }
+  #empty { padding: 20px 14px; }
+  #empty .big { font-size: 32px; }
+  #empty h2 { font-size: 20px; margin: 8px 0; }
+  #empty .starters { gap: 6px; }
+  #composerWrap { flex-shrink: 0; padding: 6px 8px max(8px, env(safe-area-inset-bottom)); background: var(--bg); }
+  #composer > .hint { display: none; }
+  #chipsRow { gap: 4px; margin-bottom: 6px; }
+  .chip { min-height: 44px; padding: 6px 8px; font-size: 12px; }
+  .box { gap: 4px; padding: 6px; border-radius: 14px; }
+  #input { min-width: 0; font-size: 16px; max-height: min(140px, 25dvh); }
+  #attachBtn, #sendBtn, #stopBtn { width: 44px; height: 44px; }
+  #stopMore { width: 32px; height: 44px; }
+  #mobileOptions { display: block; margin-left: auto; }
+  #mobileOptions summary { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; list-style: none; font-size: 13px; color: var(--text-dim); border: 1px solid var(--border2); border-radius: 12px; }
+  #mobileOptions summary::-webkit-details-marker { display: none; }
+  .mobile-options-body { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 40; padding: 12px; border: 1px solid var(--border2); background: var(--bg2); border-radius: 14px; box-shadow: 0 8px 24px #0004; }
+  .mobile-options-body #routeHint { display: block; width: auto; white-space: normal; margin-top: 8px; }
+  #hopBtn, #queueBadge { min-height: 44px; }
+  #queuePop { width: min(330px, calc(100vw - 32px)); left: auto; right: 0; }
+  #sidebar { position: fixed; inset: 0 auto 0 0; z-index: 60; transform: translateX(-102%); box-shadow: none; height: var(--parley-visible-height, 100dvh); width: min(340px, 92vw); padding-bottom: env(safe-area-inset-bottom); }
+  #sidebar .logo { padding: 10px 14px; }
+  #mobileNavClose { display: block; margin-left: auto; min-height: 44px; min-width: 44px; color: var(--text-dim); }
+  #addRoomBtn { width: 44px; height: 44px; font-size: 24px; }
+  .side-label { padding-top: 0; }
+  .room-item .ropen { min-height: 48px; }
+  .room-item .racts { display: flex; }
+  .room-item .rmeta { display: none; }
+  .room-item .ract { min-width: 44px; min-height: 44px; font-size: 17px; }
+  #mobileRoomActions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .mobile-label { width: 100%; color: var(--text-faint); font-size: 12px; }
+  #mobileRoomActions #modeToggle { flex: 1; }
+  #mobileRoomActions .mbtn { flex: 1; min-height: 44px; }
+  #newConvBtn { min-height: 44px; }
+  .side-foot { padding: 8px 12px; gap: 0; max-height: 30dvh; overflow-y: auto; flex-shrink: 0; }
+  .side-foot button, .side-foot a { min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
+  #newRoomForm { overflow-y: auto; max-height: 45dvh; flex-shrink: 0; }
+  input, textarea, select, #newRoomForm input, #newRoomForm select, .fld input, .fld select { font-size: 16px; }
+  #newRoomForm input, #newRoomForm select, .fld input, .fld select, .btn { min-height: 44px; min-width: 0; }
+  #overlay { align-items: flex-end; height: var(--parley-visible-height, 100dvh); }
+  .modal { width: 100%; max-height: calc(var(--parley-visible-height, 100dvh) - 12px); border-radius: 18px 18px 0 0; padding: 18px 14px max(14px, env(safe-area-inset-bottom)); }
+  .mgrid { grid-template-columns: minmax(0, 1fr); }
+  .mrow { flex-direction: column; align-items: stretch; gap: 16px; }
+  .mrow > div:last-child { position: sticky; bottom: -1px; justify-content: flex-end; padding: 8px 0; background: var(--bg2); }
+  dialog input { font-size: 16px; min-height: 44px; }
+  dialog button { min-height: 44px; padding: 8px 16px; }
+}
+@media (max-width: 760px) and (max-height: 540px), (max-width: 960px) and (max-height: 500px) {
+  #pills { display: none; }
+  #empty .starters, #empty .big { display: none; }
+}

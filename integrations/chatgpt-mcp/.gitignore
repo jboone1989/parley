@@ -1,0 +1,5 @@
+node_modules/
+.bridge-secret
+.env
+public/widget.bundle.js
+npm-debug.log*

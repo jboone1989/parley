@@ -1,0 +1,18 @@
+[Unit]
+Description=Parley private MCP App for ChatGPT
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ferro-prod/parley/plugin
+Environment=NODE_ENV=production
+EnvironmentFile=-%h/.config/parley-mcp.env
+ExecStart=%h/ferro-prod/parley/node-v24.11.1-linux-x64/bin/node %h/ferro-prod/parley/plugin/server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
