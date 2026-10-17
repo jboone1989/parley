@@ -157,22 +157,24 @@ export class ParleyBridge {
     }
     channel.running = false;
   }
-  async watch({ room = 'default', after = 0, waitMs = 3000 } = {}) {
+  async watch({ room = 'default', after = 0, waitMs = 3000, signal } = {}) {
     const channel = this.channel(room);
     const cursor = Math.max(0, Number(after) || 0);
     const duration = Math.min(8000, Math.max(0, Number(waitMs) || 0));
-    if (channel.seq === cursor && duration) {
+    if (channel.seq === cursor && duration && !signal?.aborted) {
       await new Promise(resolve => {
         let done = false;
         const finish = () => {
           if (done) return;
           done = true;
           channel.waiters.delete(finish);
+          signal?.removeEventListener("abort", finish);
           clearTimeout(timeout);
           resolve();
         };
         channel.waiters.add(finish);
         const timeout = setTimeout(finish, duration);
+        signal?.addEventListener("abort", finish, { once: true });
       });
     }
     const resync = cursor > channel.seq || (channel.events.length > 0 && cursor < channel.events[0].seq - 1);

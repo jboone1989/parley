@@ -6,6 +6,8 @@ import { createRequire } from "node:module";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
+import { PanelSessions } from "../panel-auth.mjs";
+import { createPanelHandler } from "../panel-server.mjs";
 import { buildNativeHtml } from "../native-html.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -18,6 +20,8 @@ const providers = Object.fromEntries(["claude", "codex"].map(id => [id, {
   fields: ["command", "model", "effort", id === "claude" ? "permissionMode" : "sandbox"], models: [], efforts: [],
 }]));
 const rooms = new Map(), events = new Map(), calls = [];
+const useDirect = process.env.PARLEY_TEST_DIRECT === "1";
+let sessions, htmlOrigin;
 function makeRoom(name) {
   const room = {
     name, dir: "/test/rooms/" + name, workspace: "/test/rooms/" + name + "/workspace", git: null,
@@ -35,8 +39,12 @@ makeRoom("default");
 const publish = (room, event) => events.get(room).push({ ...event, seq: events.get(room).length + 1 });
 const snap = name => ({ ...structuredClone(rooms.get(name)), cursor: events.get(name).length, streams: {} });
 const response = json => ({ status: 200, headers: { "content-type": "application/json", "x-parley-runtime-protocol": "12" }, json });
-async function invoke(name, args) {
-  calls.push({ name, args });
+async function invoke(name, args, source = "mcp") {
+  calls.push({ name, args, source });
+  if (name === "panel_session") {
+    if (!useDirect) throw Error("direct connection disabled for fallback acceptance");
+    return { _meta: { panelSession: sessions.issue(args.origin) } };
+  }
   if (name === "get_room") return snap(args.room);
   if (name === "watch_room") {
     await new Promise(resolve => setTimeout(resolve, 40));
@@ -79,12 +87,30 @@ async function invoke(name, args) {
   if (url.pathname === "/api/transcript") return { status: 200, headers: { "content-type": "text/markdown", "x-parley-runtime-protocol": "12" }, base64: Buffer.from("# 中文 transcript $&\n").toString("base64") };
   throw Error("Unhandled test route " + args.path);
 }
-const fakeSdk = `class App { async connect() {} async callServerTool({name, arguments:args}) { return {structuredContent:await window.__testCall(name,args)}; } }\n`;
-const transport = fakeSdk + readFileSync(join(root, "native-transport.mjs"), "utf8")
+const fakeSdk = `class App { async connect() {} async callServerTool({name, arguments:args}) { const value=await window.__testCall(name,args); return name === "panel_session" ? value : {structuredContent:value}; } }\n`;
+const directSource = readFileSync(join(root,"direct-client.mjs"),"utf8").replace(/\bexport /g, "");
+const transport = fakeSdk + directSource + "\n" + readFileSync(join(root, "native-transport.mjs"), "utf8")
   .replace(/^import .*\n/gm, "").replace(/\bexport /g, "");
 const html = buildNativeHtml(root, nativeRoot, transport);
 const server = createServer((req,res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(html); });
 await new Promise(resolve => server.listen(0,"127.0.0.1",resolve));
+htmlOrigin="http://127.0.0.1:"+server.address().port;
+let handlePanel;
+const panelServer=createServer(async(req,res)=>{
+  if(req.url.startsWith("/panel/")){await handlePanel(req,res);return;}
+  const chunks=[];for await(const part of req)chunks.push(part);
+  const result=await invoke("native_request",{path:req.url,method:req.method,...(chunks.length?{body:JSON.parse(Buffer.concat(chunks))}:{})},"upstream");
+  res.writeHead(result.status,result.headers);
+  res.end(result.base64===undefined?JSON.stringify(result.json):Buffer.from(result.base64,"base64"));
+});
+await new Promise(resolve=>panelServer.listen(0,"127.0.0.1",resolve));
+const panelOrigin="http://127.0.0.1:"+panelServer.address().port;
+sessions=new PanelSessions({origin:panelOrigin,allowLocal:true});
+const testBridge={base:panelOrigin,auth:{token:"fixture-only",protocol:"12"},
+  snapshot:async name=>snap(name),rooms:async()=>({rooms:[...rooms.keys()].map(name=>({name,mode:"talk"})),providers}),
+  watch:async args=>invoke("watch_room",args,"upstream"),
+};
+handlePanel=createPanelHandler({bridge:testBridge,sessions});
 const browser = await chromium.launch({ headless: true,
   ...(process.env.PARLEY_TEST_CHROMIUM ? { executablePath: process.env.PARLEY_TEST_CHROMIUM } : {}),
   args: ["--no-sandbox"] });
@@ -92,12 +118,12 @@ try {
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
   const startupCall = calls.length;
   const errors = []; page.on("pageerror", error => { errors.push(error.message); console.error("native browser page error:", error.message); });
-  await page.exposeFunction("__testCall", invoke);
+  await page.exposeFunction("__testCall", (name,args)=>invoke(name,args));
   await page.goto("http://127.0.0.1:"+server.address().port);
   await page.locator("#seat1 option").first().waitFor({ state: "attached" });
   const startup=calls.slice(startupCall).filter(c=>c.name==="native_request");
-  assert.equal(startup.filter(c=>c.args.path.startsWith("/api/room?")).length,1,"startup must not duplicate its snapshot");
-  assert.equal(startup.filter(c=>c.args.path==="/api/rooms").length,0,"room list must come with the snapshot");
+  if (!useDirect) assert.equal(startup.filter(c=>c.args.path.startsWith("/api/room?")).length,1,"startup must not duplicate its snapshot");
+  if (!useDirect) assert.equal(startup.filter(c=>c.args.path==="/api/rooms").length,0,"room list must come with the snapshot");
   console.log("native browser: startup uses one snapshot with bundled room list");
   const create = async name => {
     await page.locator("#addRoomBtn").click(); await page.locator("#newRoomInput").fill(name);
@@ -140,7 +166,7 @@ try {
   }
   const phone = await browser.newPage({ viewport: {width:390,height:844}, isMobile:true, hasTouch:true });
   phone.on("pageerror", error => errors.push(error.message));
-  await phone.exposeFunction("__testCall", invoke);
+  await phone.exposeFunction("__testCall", (name,args)=>invoke(name,args));
   await phone.goto("http://127.0.0.1:"+server.address().port);
   await phone.locator("#pills .pill").first().waitFor();
   const inside = async selector => {
@@ -200,5 +226,10 @@ try {
   await phone.close();
   console.log("mobile browser: touch rooms, newline/send, options, single-column settings, keyboard-sized viewport and desktop restoration passed");
   assert.deepEqual(errors,[]);
+  if(useDirect){
+    assert.equal(calls.filter(c=>c.source==="mcp" && ["native_request","watch_room","get_room"].includes(c.name)).length,0,"all UI operations and live output must avoid MCP after authorization");
+    assert.ok(calls.some(c=>c.source==="mcp"&&c.name==="panel_session"));
+    console.log("direct browser: authorized HTTP and SSE; zero business API or watch calls through MCP");
+  }
   console.log(JSON.stringify({ok:true,createdRooms:2,roomSwitchDrafts:true,reload:true,sendAndStream:true,attachment:true,settings:true,rename:true,delete:true,transcript:true,responsiveSizes:3}));
-} finally { await browser.close(); server.close(); }
+} finally { await browser.close(); server.close(); panelServer.closeAllConnections(); panelServer.close(); }

@@ -65,8 +65,15 @@ test("real MCP initializes and lists all tools without exposing unauthenticated 
   assert.equal(session.serverInfo.name, "parley-chatgpt");
   const listed = await request(2, "tools/list", {});
   assert.deepEqual(listed.tools.map(x => x.name).sort(), [
-    "get_room", "list_rooms", "native_request", "open_room", "send_message", "stop_reply", "watch_room",
+    "get_room", "list_rooms", "native_request", "open_room", "panel_session", "send_message", "stop_reply", "watch_room",
   ]);
+  const sessionTool = listed.tools.find(tool => tool.name === "panel_session");
+  assert.deepEqual(sessionTool._meta.ui.visibility, ["app"]);
+  const credential = await request(4,"tools/call",{name:"panel_session",arguments:{origin:"https://web-sandbox.oaiusercontent.com"}});
+  assert.equal(credential.structuredContent.ready,true);
+  assert.ok(credential._meta.panelSession.token.length>=40);
+  assert.ok(!JSON.stringify(credential.content).includes(credential._meta.panelSession.token));
+  assert.equal(credential.structuredContent.token,undefined);
   const opener = listed.tools.find(tool => tool.name === "open_room");
   const uri = opener._meta.ui.resourceUri;
   assert.equal(opener._meta["openai/outputTemplate"], uri);
@@ -81,6 +88,7 @@ test("real MCP initializes and lists all tools without exposing unauthenticated 
   }
   const resource = await request(3, "resources/read", { uri });
   const html = resource.contents.find(content => content.uri === uri);
+  assert.ok(html._meta.ui.csp.connectDomains.includes("https://parley-panel.livingruntime.com"));
   assert.equal(html.mimeType, "text/html;profile=mcp-app");
   for (const id of ["input", "sendBtn", "addRoomBtn", "roomList", "overlay", "fileInput"]) {
     assert.ok(html.text.includes('id="' + id + '"'), "Original Parley control missing: " + id);

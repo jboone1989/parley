@@ -32,6 +32,11 @@ jobs:
         run: node test/native-browser.mjs
         env:
           PARLEY_SCREENSHOTS: test-screenshots
+      - name: Test direct HTTP and SSE through the original UI
+        run: node test/native-browser.mjs
+        env:
+          PARLEY_TEST_DIRECT: '1'
+          PARLEY_SCREENSHOTS: test-screenshots/direct
       - uses: actions/upload-artifact@v4
         if: always()
         with:

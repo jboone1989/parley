@@ -34,6 +34,27 @@ model reasoning or create a new ChatGPT assistant turn when an agent finishes.
 ChatGPT can retrieve replies through get_room/watch_room. A closed or suspended
 panel stops polling and resumes from server history when opened again.
 
+## Direct panel connection
+The panel uses an authenticated HTTPS API and a persistent SSE stream on
+`https://parley-panel.livingruntime.com/panel`. Publish that hostname through the
+existing Cloudflare Tunnel to the same loopback adapter at `127.0.0.1:8787`.
+The existing MCP hostname retains its Cloudflare Access/OAuth policy.
+
+The `panel_session` tool is app-only and available only through the authenticated
+MCP connection. It issues an origin-bound ten-minute credential in tool-result
+`_meta`, never in model-visible content. The browser keeps it only in memory and
+sends it in Authorization headers; no credentials appear in URLs or storage.
+SSE reconnects from its acknowledged cursor, renews authorization through MCP
+when needed, and closes on expiry. Native API methods and route allowlists still
+apply. Cross-origin requests require a matching session origin; the direct path
+uses no third-party cookies.
+
+If the direct connection cannot be established, the UI shows the fallback state
+and retains the existing MCP transport. A failed write is never automatically
+replayed through another transport, because its outcome may be unknown.
+`PARLEY_PANEL_ORIGIN` overrides the direct HTTPS origin. The component's CSP
+permits this origin, and its versioned resource URI invalidates the previous UI.
+
 ## Install
 Install this directory under /home/ubuntu/ferro-prod/parley/plugin on the AIHOT overseas host. Keep the original Parley server running at 127.0.0.1:4141. With Node.js >= 20 and both authenticated CLI binaries already available:
 
