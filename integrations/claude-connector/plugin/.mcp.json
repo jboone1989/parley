@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "claude-connector": {
+      "type": "streamable-http",
+      "url": "https://claude-mcp.livingruntime.com/mcp",
+      "headers": {},
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": {
+              "mode": "dcr"
+            },
+            "baseScopes": [],
+            "defaultScopes": []
+          }
+        }
+      }
+    }
+  }
+}

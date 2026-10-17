@@ -1,0 +1,9 @@
+{
+  "name": "livingruntime-claude-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Small, independent MCP bridge for an authenticated Claude Code CLI",
+  "engines": {"node": ">=20"},
+  "scripts": {"start":"node src/server.mjs", "test":"node --test test/*.test.mjs"}
+}

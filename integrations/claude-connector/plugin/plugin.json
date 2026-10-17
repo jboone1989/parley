@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "author": {
+    "name": "LivingRuntime"
+  },
+  "description": "Use an authenticated Claude Code CLI directly from ChatGPT: messages, resumable sessions, progress, and cancellation. No imposed workflow or extra chat interface.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "capabilities": [
+          "Interactive"
+        ],
+        "category": "Productivity",
+        "defaultPrompt": "\u8ba9 Claude \u53c2\u4e0e\u5f53\u524d\u8ba8\u8bba\u3002",
+        "developerName": "LivingRuntime",
+        "displayName": "Claude Connector",
+        "longDescription": "\u4f7f\u7528\u5df2\u767b\u5f55\u7684 Claude Code CLI\u3002\u53d1\u9001\u6d88\u606f\u3001\u6062\u590d\u4f1a\u8bdd\u3001\u67e5\u770b\u6267\u884c\u8f93\u51fa\u6216\u505c\u6b62\u8fd0\u884c\uff1b\u4e0d\u9700\u8981 Parley \u804a\u5929\u7a97\u53e3\uff0c\u4e0d\u7ed1\u5b9a\u56fa\u5b9a\u5de5\u4f5c\u6d41\u7a0b\u3002",
+        "shortDescription": "\u5728 ChatGPT \u4e2d\u76f4\u63a5\u8054\u7cfb Claude Code"
+      }
+    }
+  },
+  "name": "claude-connector",
+  "repository": "https://github.com/jboone1989/parley",
+  "version": "0.1.1"
+}
