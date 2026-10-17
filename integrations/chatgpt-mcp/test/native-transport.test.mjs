@@ -12,7 +12,7 @@ function harness(handler) {
     URLSearchParams, Uint8Array, atob, setTimeout, sessionStorage: {
       getItem: key => storage.get(key) || null, setItem: (key,value) => storage.set(key,value),
     }, document: { getElementById: () => null } });
-  vm.runInContext(source+"\nthis.api = {nativeFetch,NativeEventSource,seeds};",context);
+  vm.runInContext(source+"\nthis.api = {nativeFetch,NativeEventSource,seeds,call};",context);
   return {...context.api, window};
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve,ms));
@@ -42,6 +42,7 @@ test("native event transport resumes at the snapshot boundary and stops after cl
   const finished = new Promise(resolve => { es.onmessage=event => { const data=JSON.parse(event.data);received.push(data);if(data.delta){es.close();resolve();} }; });
   await finished;
   assert.equal(requested.find(call=>call.name==="watch_room").args.after,4);
+  assert.equal(requested.find(call=>call.name==="watch_room").args.waitMs,0);
   assert.equal(received[0].text,"前缀");
   assert.equal(received[1].delta," 后续");
   const count=requested.length;await pause(5);assert.equal(requested.length,count);
@@ -57,4 +58,46 @@ test("an expired cursor reloads the original UI and restores complete partial ou
   const restored=new Promise(resolve=>{es.onmessage=event=>{es.close();resolve(JSON.parse(event.data));};});
   assert.equal((await restored).text,"恢复后的全文 $&");
   assert.equal(es.cursor,21);
+});
+
+test("room bootstrap seeds the room list and concurrent reads share one MCP request", async () => {
+  const calls=[];
+  const ui=harness(async (name,args)=>{
+    calls.push({name,args}); await pause(5);
+    return {status:200,headers:{},json:{room:{name:"a"},cursor:0,panel:{rooms:{rooms:[{name:"a"}],providers:{}}}}};
+  });
+  await Promise.all([ui.nativeFetch("/api/room?name=a"),ui.nativeFetch("/api/room?name=a")]);
+  const rooms=await (await ui.nativeFetch("/api/rooms")).json();
+  assert.equal(calls.length,1);assert.deepEqual(rooms.rooms,[{name:"a"}]);
+  assert.ok(calls[0].args.path.includes("panel=1"));
+});
+
+test("interactive writes go ahead of queued background watches", async () => {
+  let release;const order=[];
+  const ui=harness(async (name,args)=>{
+    order.push(name);
+    if(name==="first")await new Promise(resolve=>release=resolve);
+    return {ok:true};
+  });
+  const first=ui.call("first",{}); await pause(0);
+  const watch=ui.call("watch_room",{waitMs:0});
+  const write=ui.call("native_request",{path:"/api/config",method:"POST"});
+  release();await Promise.all([first,watch,write]);
+  assert.deepEqual(order,["first","native_request","watch_room"]);
+});
+
+test("writes invalidate short-lived read caches and cannot reuse an older pending read", async () => {
+  let version=0,release;const reads=[];
+  const ui=harness(async (name,args)=>{
+    if(args.method==="POST"){version++;return {status:200,headers:{},json:{ok:true}};}
+    const value=version;reads.push(value);
+    if(reads.length===1)await new Promise(resolve=>release=resolve);
+    return {status:200,headers:{},json:{version:value}};
+  });
+  const old=ui.nativeFetch("/api/rooms");await pause(0);
+  const write=ui.nativeFetch("/api/config",{method:"POST",body:"{}"});
+  const newer=ui.nativeFetch("/api/rooms");release();
+  await Promise.all([old,write]);
+  assert.equal((await (await newer).json()).version,1);
+  assert.deepEqual(reads,[0,1]);
 });

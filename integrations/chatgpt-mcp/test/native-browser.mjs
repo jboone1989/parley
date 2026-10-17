@@ -47,7 +47,9 @@ async function invoke(name, args) {
   const url = new URL(args.path, "http://test"), body = args.body || {};
   if (url.pathname === "/api/rooms" && args.method === "GET") return response({ rooms: [...rooms.keys()].map(name => ({ name, mode: "talk" })), providers });
   if (url.pathname === "/api/rooms") { makeRoom(body.name); return response({ ok: true }); }
-  if (url.pathname === "/api/room") return response(snap(url.searchParams.get("name")));
+  if (url.pathname === "/api/room") return response({ ...snap(url.searchParams.get("name")),
+    panel: {rooms:{rooms:[...rooms.keys()].map(name=>({name,mode:"talk"})),providers}},
+  });
   if (url.pathname === "/api/doctor") return response({ seats: {} });
   if (url.pathname === "/api/room/summary") return response({ room: rooms.get(url.searchParams.get("name")).room });
   if (url.pathname === "/api/message") {
@@ -88,10 +90,15 @@ const browser = await chromium.launch({ headless: true,
   args: ["--no-sandbox"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1100, height: 800 } });
+  const startupCall = calls.length;
   const errors = []; page.on("pageerror", error => { errors.push(error.message); console.error("native browser page error:", error.message); });
   await page.exposeFunction("__testCall", invoke);
   await page.goto("http://127.0.0.1:"+server.address().port);
   await page.locator("#seat1 option").first().waitFor({ state: "attached" });
+  const startup=calls.slice(startupCall).filter(c=>c.name==="native_request");
+  assert.equal(startup.filter(c=>c.args.path.startsWith("/api/room?")).length,1,"startup must not duplicate its snapshot");
+  assert.equal(startup.filter(c=>c.args.path==="/api/rooms").length,0,"room list must come with the snapshot");
+  console.log("native browser: startup uses one snapshot with bundled room list");
   const create = async name => {
     await page.locator("#addRoomBtn").click(); await page.locator("#newRoomInput").fill(name);
     await page.locator("#newRoomCreate").click(); await page.waitForFunction(name => document.getElementById("roomTitle").textContent === name, name);

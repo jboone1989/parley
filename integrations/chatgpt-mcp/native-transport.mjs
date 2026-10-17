@@ -6,10 +6,55 @@ let activeRoom, started = false;
 const stored = key => { try { return sessionStorage.getItem(key); } catch { return null; } };
 const remember = (key, value) => { try { sessionStorage.setItem(key, value); } catch {} };
 
-async function call(name, args) {
-  const result = await app.callServerTool({ name, arguments: args });
-  if (result.isError) throw Error(result.content?.find(item => item.type === "text")?.text || "Parley request failed");
-  return result.structuredContent || JSON.parse(result.content?.find(item => item.type === "text")?.text || "{}");
+// Keep background watches out of the interactive request queue. Some hosts
+// serialize tool calls, so a long poll can otherwise delay every button.
+const foreground = [], background = [], reads = new Map(), readCache = new Map();
+let dispatching = false, generation = 0, foregroundCount = 0;
+const performance = { calls: 0, queuedMs: 0, remoteMs: 0, cacheHits: 0, mergedReads: 0 };
+window.__parleyPerformance = () => ({ ...performance, foregroundPending: foregroundCount });
+function dispatch() {
+  if (dispatching) return;
+  const task = foreground.shift() || background.shift();
+  if (!task) return;
+  dispatching = true;
+  const began = Date.now(); performance.queuedMs += began - task.queuedAt;
+  performance.calls++;
+  Promise.resolve().then(() => app.callServerTool({ name: task.name, arguments: task.args }))
+    .then(result => {
+      if (result.isError) throw Error(result.content?.find(item => item.type === "text")?.text || "Parley request failed");
+      return result.structuredContent || JSON.parse(result.content?.find(item => item.type === "text")?.text || "{}");
+    }).then(task.resolve, task.reject).finally(() => {
+      performance.remoteMs += Date.now() - began;
+      if (task.name !== "watch_room") foregroundCount--;
+      dispatching = false; dispatch();
+    });
+}
+function call(name, args) {
+  return new Promise((resolve, reject) => {
+    if (name !== "watch_room") foregroundCount++;
+    (name === "watch_room" ? background : foreground).push({ name, args, resolve, reject, queuedAt: Date.now() });
+    dispatch();
+  });
+}
+function nativeRead(url) {
+  const path = url.pathname + url.search, key = generation + ":" + path;
+  const cached = readCache.get(path);
+  if (cached && cached.until > Date.now()) { performance.cacheHits++; return Promise.resolve(cached.value); }
+  if (reads.has(key)) { performance.mergedReads++; return reads.get(key); }
+  const revision = generation;
+  const outgoing = new URL(url);
+  if (url.pathname === "/api/room") outgoing.searchParams.set("panel", "1");
+  const pending = call("native_request", { path: outgoing.pathname + outgoing.search, method: "GET" }).then(value => {
+    if (revision === generation && value.status === 200) {
+      const ttl = url.pathname === "/api/rooms" ? 2000 : url.pathname === "/api/doctor" ? 30000 : 0;
+      if (ttl) readCache.set(path, { value, until: Date.now() + ttl });
+      if (value.json?.panel?.rooms) readCache.set("/api/rooms", {
+        value: { ...value, json: value.json.panel.rooms }, until: Date.now() + 2000,
+      });
+    }
+    return value;
+  }).finally(() => reads.delete(key));
+  reads.set(key, pending); return pending;
 }
 
 // Embedded sandboxes do not reliably allow blocking alert/confirm/prompt.
@@ -74,7 +119,13 @@ export async function nativeFetch(path, options = {}) {
     await askDialog("文件夹位于 Parley 服务器：\n" + path);
     result = { status: 200, headers: { "x-parley-runtime-protocol": "12" }, json: { ok: true, path } };
   } else {
-    result = await call("native_request", { path: url.pathname + url.search, method: options.method || "GET", ...(body === undefined ? {} : { body }) });
+    if ((options.method || "GET") === "GET") result = await nativeRead(url);
+    else {
+      generation++; readCache.clear();
+      try {
+        result = await call("native_request", { path: url.pathname + url.search, method: options.method, ...(body === undefined ? {} : { body }) });
+      } finally { generation++; readCache.clear(); }
+    }
   }
   if (url.pathname === "/api/room" && result.status === 200 && result.json?.room) {
     seeds.set(result.json.room.name, result.json);
@@ -110,10 +161,12 @@ export class NativeEventSource extends EventTarget {
     this.readyState = 1; this.emit("open"); this.seed();
     while (this.readyState !== 2) {
       try {
-        const result = await call("watch_room", { room: this.room, after: this.cursor, waitMs: 3000 });
+        if (foregroundCount || document.visibilityState === "hidden") { await pause(250); continue; }
+        const result = await call("watch_room", { room: this.room, after: this.cursor, waitMs: 0 });
         if (this.readyState === 2) return;
         if (result.resync) {
           const previous = seeds.get(this.room);
+          readCache.clear();
           await window.__parleyNative?.refreshAfterGap();
           if (this.readyState === 2) return;
           const snapshot = seeds.get(this.room);
@@ -126,6 +179,7 @@ export class NativeEventSource extends EventTarget {
         }
         if (!result.connected && this.readyState === 1) { this.readyState = 0; this.emit("error"); }
         else if (result.connected && this.readyState === 0) { this.readyState = 1; this.emit("open"); }
+        if (this.readyState !== 2) await pause(result.events?.length ? 100 : 1500);
       } catch {
         if (this.readyState === 2) return;
         this.readyState = 0; this.emit("error"); await pause(1500);

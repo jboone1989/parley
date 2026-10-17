@@ -20,7 +20,11 @@ export async function nativeRequest(bridge, { path, method = "GET", body }, retr
   url.searchParams.delete("token"); url.searchParams.delete("protocol");
   if (method === "GET" && body !== undefined) throw Error("GET requests cannot include a body");
   if (method === "GET" && url.pathname === "/api/room") {
-    const snapshot = await bridge.snapshot(url.searchParams.get("name") || "default");
+    const [snapshot, rooms] = await Promise.all([
+      bridge.snapshot(url.searchParams.get("name") || "default"),
+      url.searchParams.get("panel") === "1" ? bridge.rooms().catch(() => null) : null,
+    ]);
+    if (rooms) snapshot.panel = { rooms };
     return { status: 200, headers: { "content-type": "application/json", "x-parley-runtime-protocol": bridge.auth.protocol }, json: snapshot };
   }
   const { token, protocol } = bridge.auth || await bridge.refreshAuth();

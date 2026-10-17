@@ -56,3 +56,14 @@ test("native errors stay native responses instead of pretending success", async 
   assert.equal(result.status, 409);
   assert.equal(result.json.error, "room already exists");
 });
+
+test("panel bootstrap bundles room listing without changing ordinary snapshots", async () => {
+  const value=bridge();let listings=0;
+  value.rooms=async()=>{listings++;return {rooms:[{name:"test"}]};};
+  const bundled=await nativeRequest(value,{path:"/api/room?name=test&panel=1"});
+  assert.deepEqual(bundled.json.panel.rooms.rooms,[{name:"test"}]);
+  assert.equal(bundled.json.cursor,7);assert.equal(listings,1);
+  assert.equal((await nativeRequest(value,{path:"/api/room?name=test"})).json.panel,undefined);
+  value.rooms=async()=>{throw Error("temporary listing error");};
+  assert.equal((await nativeRequest(value,{path:"/api/room?name=test&panel=1"})).json.room.name,"test");
+});
