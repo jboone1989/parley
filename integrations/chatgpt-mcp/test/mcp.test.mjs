@@ -95,5 +95,12 @@ test("real MCP initializes and lists all tools without exposing unauthenticated 
   }
   const bundle = readFileSync(join(cwd, "public/widget.bundle.js"), "utf8");
   assert.ok(html.text.includes(bundle), "UI resource must preserve bundled JavaScript verbatim");
+  // A saved ChatGPT tool definition can still request the previous UI URI.
+  const legacyUri = "ui://parley/native-v1.html";
+  const legacyResource = await request(5, "resources/read", { uri: legacyUri });
+  const legacyHtml = legacyResource.contents.find(content => content.uri === legacyUri);
+  assert.ok(legacyHtml, "Previously advertised UI URI must remain readable");
+  assert.equal(legacyHtml.text, html.text);
+  assert.deepEqual(legacyHtml._meta.ui.csp, html._meta.ui.csp);
 
 });

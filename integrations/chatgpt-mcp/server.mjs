@@ -26,14 +26,18 @@ const reply = (value, note) => ({
 });
 function makeMcp() {
   const mcp = new McpServer({ name: "parley-chatgpt", version: "0.1.0" });
-  registerAppResource(mcp, "Parley chat", uri, {}, async () => ({
+  // ChatGPT can retain tool metadata and saved panels across server upgrades.
+  // Keep previously advertised resources readable while new clients use uri.
+  for (const resourceUri of [uri, "ui://parley/native-v1.html"]) {
+    registerAppResource(mcp, resourceUri === uri ? "Parley chat" : "Parley saved chat", resourceUri, {}, async () => ({
     contents: [{
-      uri, mimeType: RESOURCE_MIME_TYPE, text: widget,
+      uri: resourceUri, mimeType: RESOURCE_MIME_TYPE, text: widget,
       _meta: { ui: { prefersBorder: true, csp: { connectDomains: [panelOrigin], resourceDomains: [] } },
         "openai/ui": { availableDisplayModes: ["inline", "fullscreen"], preferredDisplayMode: "fullscreen" },
         "openai/widgetDescription": "Original Parley interface: multiple rooms, settings, attachments, pair review and live output" },
     }],
-  }));
+    }));
+  }
   const secure = {
     ...(securitySchemes ? { securitySchemes } : {}),
     _meta: { "openai/widgetAccessible": true },
